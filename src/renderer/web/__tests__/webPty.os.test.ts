@@ -2,12 +2,23 @@
 // (viewerParser.ts): stream rationing and back-off, the snapshot → replay
 // contract, tickets, the input queue (replay wait, failure halts, receipts),
 // the grant re-read, and — with a REAL xterm parser (@xterm/headless) — that a
-// viewer answers no terminal query and disarms a dead TUI's mouse mode without
-// touching ?2004.
+// viewer absorbs terminal queries unless it is the pane's only answerer, and
+// disarms a dead TUI's mouse mode without touching ?2004.
 import { describe, it, expect, vi } from 'vitest';
 import { Terminal } from '@xterm/headless';
-import { createWebPty, newTerminalTarget, snapshotTail, STREAM_FAIL_LIMIT, WEB_LIVE_STREAM_CAP, type WebPtyDeps } from '../webPty';
+import {
+  APPROVAL_CAPS,
+  approvalOutcome,
+  approvalRequest,
+  createWebPty,
+  newTerminalTarget,
+  snapshotTail,
+  STREAM_FAIL_LIMIT,
+  WEB_LIVE_STREAM_CAP,
+  type WebPtyDeps,
+} from '../webPty';
 import { installViewerParser } from '../viewerParser';
+import { beginReplayWrite, createReplayMute, isReplayMuted } from '../../terminal/replayMute';
 import type { WebCredential } from '../webCredential';
 import { deliberateSleep } from '../../../test-utils/waitFor';
 
@@ -269,28 +280,58 @@ describe('snapshot → replay contract', () => {
 
 describe('a viewer terminal (real parser)', () => {
   const armed = '\x1b[?2004h$ vim\r\n\x1b[?1000h\x1b[?1003h\x1b[?1006h\x1b[?1004h';
-  const newTerm = (mayInput = true) => {
+  const newTerm = (mayInput = true, answerQueries = false) => {
     const term = new Terminal({ cols: 80, rows: 24, allowProposedApi: true });
-    installViewerParser(term as unknown as Parameters<typeof installViewerParser>[0], { mayInput: () => mayInput });
+    installViewerParser(term as unknown as Parameters<typeof installViewerParser>[0], {
+      mayInput: () => mayInput,
+      answerQueries: () => answerQueries,
+    });
     return term;
   };
   const write = (term: Terminal, data: string) => new Promise<void>((r) => term.write(data, r));
 
-  it('answers no terminal query — replayed or live — so nothing reaches the shell', async () => {
+  it('answers no terminal query while a desk owns the pane — replayed or live', async () => {
     const term = newTerm();
     const answers: string[] = [];
     term.onData((d) => answers.push(d));
     // DA1, DA2, DA3, DSR, CPR, DECDSR, DECRQM (ANSI + DEC), XTVERSION, DECRQSS, OSC 10/11/12/4 queries.
     await write(term, '\x1b[c\x1b[0c\x1b[>c\x1b[=c\x1b[5n\x1b[6n\x1b[?6n\x1b[4$p\x1b[?2004$p\x1b[>q\x1bP$qm\x1b\\\x1b]10;?\x07\x1b]11;?\x07\x1b]12;?\x07\x1b]4;1;?\x07');
     expect(answers).toEqual([]);
-    // Control: an unhooked terminal does answer the same bytes.
+    term.dispose();
+  });
+
+  it('answers queries when it is the pane\'s only terminal, like an unhooked one', async () => {
+    const owner = newTerm(true, true);
+    const ownedAnswers: string[] = [];
+    owner.onData((d) => ownedAnswers.push(d));
+    await write(owner, '\x1b[c\x1b[6n');
+    // Control: an unhooked terminal gives the same answers (DA1 + CPR).
     const plain = new Terminal({ cols: 80, rows: 24, allowProposedApi: true });
     const plainAnswers: string[] = [];
     plain.onData((d) => plainAnswers.push(d));
     await write(plain, '\x1b[c\x1b[6n');
     expect(plainAnswers.length).toBe(2);
-    term.dispose();
+    expect(ownedAnswers).toEqual(plainAnswers);
+    owner.dispose();
     plain.dispose();
+  });
+
+  it('absorbs a REPLAYED query even when it answers the same query live', async () => {
+    const mute = createReplayMute();
+    const term = new Terminal({ cols: 80, rows: 24, allowProposedApi: true });
+    installViewerParser(term as unknown as Parameters<typeof installViewerParser>[0], {
+      mayInput: () => true,
+      answerQueries: () => !isReplayMuted(mute),
+    });
+    const answers: string[] = [];
+    term.onData((d) => answers.push(d));
+    const release = beginReplayWrite(mute);
+    await write(term, '\x1b[c\x1b[6n');
+    expect(answers).toEqual([]);
+    release();
+    await write(term, '\x1b[c\x1b[6n');
+    expect(answers.length).toBe(2);
+    term.dispose();
   });
 
   it('still applies colour changes (only queries are absorbed)', async () => {
@@ -520,6 +561,68 @@ describe('createTerminal', () => {
   });
 });
 
+describe('requestGeometry', () => {
+  it('posts the phone grid and renders at the geometry the daemon stored', async () => {
+    const { hub, calls } = make({
+      operator: true,
+      reply: (url) => (url === '/api/sessions/pty-1/resize'
+        ? new Response(JSON.stringify({ cols: 46, rows: 44, owner: 'caller' }), { status: 200 }) : undefined),
+    });
+    await expect(hub.requestGeometry('pty-1', 46, 44)).resolves.toEqual({ cols: 46, rows: 44 });
+    expect(hub.geometryOf('pty-1')).toEqual({ cols: 46, rows: 44 });
+    expect(hub.deskOwnsSize('pty-1')).toBe(false);
+    const call = calls.find((c) => c.url === '/api/sessions/pty-1/resize');
+    expect(call?.method).toBe('POST');
+    expect(JSON.parse(String(call?.body))).toEqual({ cols: 46, rows: 44 });
+    expect(call?.headers?.Authorization).toBe('Bearer secret');
+  });
+
+  it('a desk-owns-size 409 is the answer: its geometry is stored for rendering', async () => {
+    const { hub } = make({
+      reply: (url) => (url === '/api/sessions/pty-1/resize'
+        ? new Response(JSON.stringify({ error: 'desk-owns-size', cols: 151, rows: 47, owner: 'desk' }), { status: 409 }) : undefined),
+    });
+    await expect(hub.requestGeometry('pty-1', 46, 44)).resolves.toEqual({ cols: 151, rows: 47 });
+    expect(hub.geometryOf('pty-1')).toEqual({ cols: 151, rows: 47 });
+    expect(hub.deskOwnsSize('pty-1')).toBe(true);
+  });
+
+  it('ownership stays unknown until a resize answer names it, and a failed 409 does not flip it', async () => {
+    const { hub } = make({
+      reply: (url) => (url.startsWith('/api/sessions/pty-1/resize')
+        ? new Response(JSON.stringify({ error: 'resize-failed', detail: 'deferred' }), { status: 409 }) : undefined),
+    });
+    expect(hub.deskOwnsSize('pty-1')).toBeUndefined();
+    await expect(hub.requestGeometry('pty-1', 46, 44)).resolves.toBeNull();
+    expect(hub.deskOwnsSize('pty-1')).toBeUndefined();
+  });
+
+  it('does not store a refusal that names no usable grid', async () => {
+    const busy = make({ reply: (url) => (url.startsWith('/api/sessions/pty-1/resize')
+      ? new Response(JSON.stringify({ error: 'resize-too-often', retryAfterMs: 120 }), { status: 429 }) : undefined) });
+    await expect(busy.hub.requestGeometry('pty-1', 46, 44)).resolves.toBeNull();
+    expect(busy.hub.geometryOf('pty-1')).toBeUndefined();
+    expect(busy.hub.deskOwnsSize('pty-1')).toBeUndefined();
+  });
+
+  it('a slow older answer never overwrites the newer geometry', async () => {
+    const parked: Array<(res: Response) => void> = [];
+    const { hub } = make({
+      reply: (url) => (url.startsWith('/api/sessions/pty-1/resize')
+        ? new Promise<Response>((resolve) => { parked.push(resolve); })
+        : undefined),
+    });
+    const old = hub.requestGeometry('pty-1', 40, 30);
+    const fresh = hub.requestGeometry('pty-1', 46, 44);
+    await flush();
+    expect(parked).toHaveLength(2);
+    parked[1](new Response(JSON.stringify({ cols: 46, rows: 44 }), { status: 200 }));
+    parked[0](new Response(JSON.stringify({ cols: 40, rows: 30 }), { status: 200 }));
+    await Promise.all([old, fresh]);
+    expect(hub.geometryOf('pty-1')).toEqual({ cols: 46, rows: 44 });
+  });
+});
+
 describe('newTerminalTarget', () => {
   it('uses the active workspace, or the first while the active id is stale', () => {
     expect(newTerminalTarget('ws-a', ['ws-b', 'ws-a'], 'main')).toEqual({ workspaceId: 'ws-a' });
@@ -533,5 +636,75 @@ describe('newTerminalTarget', () => {
     expect(fresh.workspaceId).toMatch(/^[A-Za-z0-9_-]{1,64}$/);
     expect(newTerminalTarget('', [], 'main').workspaceId).not.toBe(fresh.workspaceId);
     expect(newTerminalTarget('', [], 'main', fresh)).toBe(fresh);
+  });
+});
+
+describe('approvals', () => {
+  it('keeps usable records and drops malformed choices', () => {
+    expect(approvalRequest({ id: 'ap-1', kind: 'terminal_prompt', toolName: 'Bash', risk: 'critical',
+      choices: [{ key: '1', label: 'Yes' }, { key: 2, label: 'No' }, null], hasDetail: true })).toMatchObject({
+      id: 'ap-1', toolName: 'Bash', risk: 'critical', choices: [{ key: '1', label: 'Yes' }], hasDetail: true,
+    });
+    expect(approvalRequest({ id: '' })).toBeNull();
+    expect(approvalRequest(null)).toBeNull();
+  });
+
+  it('maps each refusal the daemon can send to an action the page understands', () => {
+    expect(approvalOutcome(425, { error: 'answer-too-soon' })).toEqual({ ok: false, code: 'too-soon' });
+    expect(approvalOutcome(409, { error: 'prompt-changed' })).toEqual({ ok: false, code: 'changed' });
+    expect(approvalOutcome(410, { error: 'expired', state: 'pending' })).toEqual({ ok: false, code: 'expired' });
+    expect(approvalOutcome(409, { error: 'already-answered' })).toEqual({ ok: false, code: 'already' });
+    expect(approvalOutcome(501, { error: 'answer-in-terminal', reason: 'unsupported-shape' })).toEqual({ ok: false, code: 'unsupported' });
+    expect(approvalOutcome(500, {})).toEqual({ ok: false, code: 'refused', detail: '500' });
+  });
+
+  it('lists with the answer capability and parses the pending set', async () => {
+    const { hub, calls } = make({
+      reply: (url) => (url === '/api/approvals'
+        ? new Response(JSON.stringify({
+          pending: [{ id: 'ap-1', kind: 'awaiting_permission', question: 'Run it?', choices: [{ key: '1', label: 'Yes' }] }],
+          recentlyResolved: [{ id: 'ap-0', decision: 'approve' }],
+        }), { status: 200 })
+        : undefined),
+    });
+    const list = await hub.listApprovals();
+    expect(list?.pending[0]).toMatchObject({ id: 'ap-1', question: 'Run it?' });
+    expect(list?.recentlyResolved[0]).toMatchObject({ id: 'ap-0', decision: 'approve' });
+    const call = calls.find((c) => c.url === '/api/approvals')!;
+    expect((call.headers as Record<string, string>)['X-Wmux-Client-Caps']).toBe(APPROVAL_CAPS);
+  });
+
+  it('posts the decision with its choice and fingerprint, and declines with Esc', async () => {
+    const { hub, calls } = make({
+      reply: (url) => (url === '/api/approvals/ap-1' && calls.some((c) => c.url === url && c.method === 'POST')
+        ? new Response(JSON.stringify({ state: 'pending', pressedAt: 1, durable: true }), { status: 200 })
+        : url === '/api/approvals/ap-1/decline' ? new Response('{}', { status: 200 }) : undefined),
+    });
+    await expect(hub.decideApproval('ap-1', { decision: 'approve', choiceKey: '1', promptFingerprint: 'ab'.repeat(16) }))
+      .resolves.toEqual({ ok: true });
+    const post = calls.find((c) => c.url === '/api/approvals/ap-1' && c.method === 'POST')!;
+    expect(JSON.parse(String(post.body))).toEqual({ decision: 'approve', choiceKey: '1', promptFingerprint: 'ab'.repeat(16) });
+    await expect(hub.declineApproval('ap-1', 'ab'.repeat(16))).resolves.toEqual({ ok: true });
+    const declined = calls.find((c) => c.url === '/api/approvals/ap-1/decline')!;
+    expect(JSON.parse(String(declined.body))).toEqual({ promptFingerprint: 'ab'.repeat(16) });
+  });
+
+  it('surfaces a prompt change instead of retrying it blindly', async () => {
+    const { hub } = make({
+      reply: (url) => (url === '/api/approvals/ap-1'
+        ? new Response(JSON.stringify({ error: 'prompt-changed' }), { status: 409 })
+        : undefined),
+    });
+    await expect(hub.decideApproval('ap-1', { decision: 'approve', choiceKey: '1' }))
+      .resolves.toEqual({ ok: false, code: 'changed' });
+  });
+
+  it('reads the whole command only when the server offers it', async () => {
+    const { hub } = make({
+      reply: (url) => (url === '/api/approvals/ap-1/detail'
+        ? new Response(JSON.stringify({ id: 'ap-1', toolName: 'Bash', command: 'rm -rf build', commandHash: 'x', commandBytes: 11 }), { status: 200 })
+        : undefined),
+    });
+    await expect(hub.approvalDetail('ap-1')).resolves.toEqual({ command: 'rm -rf build', toolName: 'Bash', truncated: false });
   });
 });

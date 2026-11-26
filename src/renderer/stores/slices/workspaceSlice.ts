@@ -14,7 +14,8 @@ import { normalizeRoleBindings } from '../../../shared/orchestratorRole';
 import { getPresetById } from '../../../shared/layoutPresets';
 import { companyPresetTree, companySeatsError, type CompanyWorkspaceInput } from '../../../shared/companyPreset';
 import { setLocale as i18nSetLocale, t as i18nT, detectSupportedLocale, type Locale } from '../../i18n';
-import { applyCustomCssVars, migrateThemeId, migrateCustomThemeColors } from '../../themes';
+import { applyCustomCssVars, clearCustomCssVars, DEFAULT_CUSTOM_THEME, migrateThemeId, migrateCustomThemeColors } from '../../themes';
+import { systemPrefersDark, systemSlotTheme } from '../../utils/followSystemTheme';
 import { resetInspectState, extractLayout, buildPaneFromLayout, siteGuidesAutoEnablePatch } from './uiSlice';
 import { sanitizeFontFamily } from '../../utils/terminalFont';
 import { sanitizeTerminalCursorStyle } from '../../../shared/terminalCursor';
@@ -1620,6 +1621,19 @@ export const createWorkspaceSlice: StateCreator<StoreState, [['zustand/immer', n
         if (theme === 'custom' && migratedCustomTheme) {
           applyCustomCssVars(migratedCustomTheme);
         }
+      }
+      // Follow-system (2026-11-25): restore the mode and its two slots, then
+      // re-resolve them — the OS may have switched appearance while the app
+      // was closed, in which case the saved `theme` is the other slot's.
+      if (data.themeMode === 'system' || data.themeMode === 'fixed') state.themeMode = data.themeMode;
+      if (data.lightTheme) state.lightTheme = migrateThemeId(data.lightTheme);
+      if (data.darkTheme) state.darkTheme = migrateThemeId(data.darkTheme);
+      const systemSlot = systemSlotTheme(state.themeMode, state.lightTheme, state.darkTheme, systemPrefersDark());
+      if (systemSlot) {
+        state.theme = systemSlot;
+        document.documentElement.setAttribute('data-theme', systemSlot);
+        if (systemSlot === 'custom') applyCustomCssVars(state.customThemeColors ?? DEFAULT_CUSTOM_THEME);
+        else clearCustomCssVars();
       }
       // The caller has loaded this language's table (AppLayout), so the
       // switch shows it at once.

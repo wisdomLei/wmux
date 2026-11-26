@@ -54,9 +54,10 @@ describe('sanitizeFontFamily', () => {
 });
 
 // 크로스 플랫폼 폴백 체인 락 — mac 모노(Menlo/SF Mono/Monaco), win 모노
-// (Consolas/Courier New), 한글 폴백(Apple SD Gothic Neo/Malgun Gothic), generic.
+// (Consolas/Courier New), 한글 폴백(Apple SD Gothic Neo/Malgun Gothic),
+// the browser build's symbol subset (wmux Symbols), generic.
 const FALLBACK_CHAIN =
-  "'Menlo', 'SF Mono', 'Monaco', 'Consolas', 'Courier New', 'Apple SD Gothic Neo', 'Malgun Gothic', monospace";
+  "'Menlo', 'SF Mono', 'Monaco', 'Consolas', 'Courier New', 'Apple SD Gothic Neo', 'Malgun Gothic', 'wmux Symbols', monospace";
 
 describe('terminalFontFamilyCss', () => {
   it('wraps a clean name in quotes and appends the fallback chain', () => {
@@ -67,8 +68,14 @@ describe('terminalFontFamilyCss', () => {
     // The injection chars are stripped, then the remainder is quoted once.
     const css = terminalFontFamilyCss(`x'; } body {`);
     expect(css).toBe(`'x body', ${FALLBACK_CHAIN}`);
-    // Exactly eight quoted families × 2 quotes — no extra quotes leaked in.
-    expect((css.match(/'/g) || []).length).toBe(16);
+    // Exactly nine quoted families × 2 quotes — no extra quotes leaked in.
+    expect((css.match(/'/g) || []).length).toBe(18);
+  });
+
+  it('keeps the browser symbol fallback in the chain', () => {
+    // The browser build defines 'wmux Symbols' (web.css, 3 KB Noto subset)
+    // for the Claude TUI's ⏵/⏺/⎿/✳/✻; Android's fonts have none of them.
+    expect(FALLBACK_CHAIN).toContain("'wmux Symbols'");
   });
 
   it('returns the fallback chain alone when the name is empty/unsafe', () => {

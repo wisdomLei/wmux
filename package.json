@@ -1,7 +1,7 @@
 {
   "name": "wmux",
   "productName": "wmux",
-  "version": "4.17.0",
+  "version": "4.17.0-alei.1",
   "description": "Workspace multiplexer for AI agents — run fleets of Claude Code, Codex & Gemini in parallel on Windows & macOS, with MCP browser automation built in",
   "private": true,
   "main": ".vite/build/index.js",
@@ -61,17 +61,17 @@
     "electron"
   ],
   "author": {
-    "name": "openwong2kim",
-    "email": "100856670+openwong2kim@users.noreply.github.com"
+    "name": "alei wisdom",
+    "email": "aleiwisdom@gmail.com"
   },
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/openwong2kim/wmux.git"
+    "url": "https://github.com/wisdomLei/wmux.git"
   },
-  "homepage": "https://github.com/openwong2kim/wmux#readme",
+  "homepage": "https://github.com/wisdomLei/wmux#readme",
   "bugs": {
-    "url": "https://github.com/openwong2kim/wmux/issues"
+    "url": "https://github.com/wisdomLei/wmux/issues"
   },
   "engines": {
     "node": ">=18.0.0",

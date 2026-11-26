@@ -115,7 +115,7 @@ export function warnOnInstallIntegrityGap(): void {
       `This wmux installation is missing ${gap.missing.join(', ')} — the last install did not finish ` +
       '(an antivirus scan interrupting the installer can cause this).\n\n' +
       'wmux itself runs, but in-app updates and uninstalling will fail until it is reinstalled. ' +
-      'Download the latest installer from github.com/openwong2kim/wmux/releases and run it to repair.',
+      'Download the latest installer from github.com/wisdomLei/wmux/releases and run it to repair.',
     );
   } catch { /* best-effort — never block boot over a warning */ }
 }

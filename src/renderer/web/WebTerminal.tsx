@@ -14,13 +14,21 @@
  *    stream's `meta`); scrollback restore and the PTY-created callback are
  *    desktop-only and are not passed on.
  */
-import { useEffect, useSyncExternalStore } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import TerminalComponent from '../components/Terminal/Terminal';
+import { terminalRegistry } from '../hooks/useTerminal';
 import { useStore } from '../stores';
 import { useT } from '../hooks/useT';
 import { findLeaf, findLeafBySurfaceId, getLeafPanes } from '../../shared/paneUtils';
 import { FOCUS_RING } from '../components/focusRing';
 import { WEB_LIVE_STREAM_CAP, type InputHalt, type WebPtyHub } from './webPty';
+import { useNarrow } from './responsive';
+import { needsReadablePan, phoneTerminalGrid, readableSurfaceWidth } from './phoneTerminal';
+
+/** How often a phone re-asks a size the desk refused. A refusal costs the desk
+ *  nothing (no SIGWINCH), and the desk sends no event when it stops showing
+ *  the pane, so a slow probe is the only way the phone can take the size over. */
+const DESK_OWNED_PROBE_MS = 10_000;
 
 let hub: WebPtyHub | null = null;
 
@@ -113,6 +121,10 @@ export default function WebTerminal({
   const t = useT();
   const h = hub;
   useSyncExternalStore(h ? h.subscribe : noopSubscribe, h ? h.version : zero);
+  const narrow = useNarrow();
+  const boxRef = useRef<HTMLDivElement | null>(null);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const [phoneBox, setPhoneBox] = useState<{ width: number; height: number } | null>(null);
 
   // The phone shows one pane through the app's zoom; PaneContainer hides the
   // others with CSS but still tells them they are visible.
@@ -136,6 +148,9 @@ export default function WebTerminal({
 
   const shown = isWorkspaceVisible && (visible ?? isActive) && !zoomHidden;
   const id = ptyId ?? '';
+  const geom = id ? h?.geometryOf(id) : undefined;
+  const geomCols = geom?.cols ?? 0;
+  const geomRows = geom?.rows ?? 0;
 
   useEffect(() => {
     if (!h || !shown || !id) return;
@@ -143,10 +158,136 @@ export default function WebTerminal({
     return () => h.release(id);
   }, [h, shown, id]);
 
+  // The phone asks the pane for the grid it can read (phoneTerminal.ts). The
+  // box is measured after a layout settles, never per animation frame: every
+  // accepted resize arms the daemon's redraw guard, and one loop can stop new
+  // approvals from being detected. The desk keeps its own size while it is
+  // actually showing the pane; its 409 then names the grid to render instead.
+  useEffect(() => {
+    if (!narrow || !shown) return undefined;
+    const el = boxRef.current;
+    if (!el) return undefined;
+    const measure = () => {
+      const r = el.getBoundingClientRect();
+      const next = { width: Math.round(r.width), height: Math.round(r.height) };
+      setPhoneBox((prev) => (prev && prev.width === next.width && prev.height === next.height ? prev : next));
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [narrow, shown]);
+
+  // Touch focus and panning. xterm's document touch handler calls
+  // preventDefault, so the browser never scrolls our overflow container, and
+  // its screen does not take focus from a tap (only mousedown does). Track one
+  // finger here: a tap focuses the terminal (opening the software keyboard, as
+  // the gesture is still live), a sideways swipe pans a desk-owned surface,
+  // and anything else is left to xterm's own scrollback handling.
+  useEffect(() => {
+    if (!narrow) return undefined;
+    const el = scrollRef.current;
+    if (!el) return undefined;
+    let startX = 0;
+    let startY = 0;
+    let startLeft = 0;
+    let panning = false;
+    let moved = false;
+    const onTouchStart = (e: TouchEvent) => {
+      panning = false;
+      moved = false;
+      if (e.touches.length !== 1) return;
+      const touch = e.touches[0];
+      startX = touch.clientX;
+      startY = touch.clientY;
+      startLeft = el.scrollLeft;
+    };
+    const onTouchMove = (e: TouchEvent) => {
+      if (e.touches.length !== 1) return;
+      const touch = e.touches[0];
+      const dx = touch.clientX - startX;
+      const dy = touch.clientY - startY;
+      if (Math.abs(dx) > 8 || Math.abs(dy) > 8) moved = true;
+      if (el.scrollWidth <= el.clientWidth) return;
+      if (!panning) {
+        // Sideways, and clearly more sideways than down: a vertical swipe is
+        // xterm's scrollback, not this pan.
+        if (Math.abs(dx) < 8 || Math.abs(dx) < Math.abs(dy) * 1.2) return;
+        panning = true;
+      }
+      e.preventDefault();
+      el.scrollLeft = startLeft - dx;
+    };
+    const onTouchEnd = () => {
+      if (!moved && !panning) terminalRegistry.get(id)?.focus();
+    };
+    const onTouchCancel = () => { panning = false; moved = false; };
+    el.addEventListener('touchstart', onTouchStart, { passive: true });
+    el.addEventListener('touchmove', onTouchMove, { passive: false });
+    el.addEventListener('touchend', onTouchEnd, { passive: true });
+    el.addEventListener('touchcancel', onTouchCancel, { passive: true });
+    return () => {
+      el.removeEventListener('touchstart', onTouchStart);
+      el.removeEventListener('touchmove', onTouchMove);
+      el.removeEventListener('touchend', onTouchEnd);
+      el.removeEventListener('touchcancel', onTouchCancel);
+    };
+  }, [narrow, id]);
+
+  const phoneGrid = narrow && phoneBox ? phoneTerminalGrid(phoneBox.width, phoneBox.height) : null;
+  const targetCols = phoneGrid?.cols ?? 0;
+  const targetRows = phoneGrid?.rows ?? 0;
+  useEffect(() => {
+    if (!h || !id || !shown || !narrow || !targetCols || !targetRows) return undefined;
+    const current = h.geometryOf(id);
+    if (current && current.cols === targetCols && current.rows === targetRows) return undefined;
+    let cancelled = false;
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
+    const attempt = (n: number) => {
+      void h.requestGeometry(id, targetCols, targetRows).then((answer) => {
+        if (cancelled || answer || n >= 2) return;
+        retryTimer = setTimeout(() => attempt(n + 1), 500);
+      });
+    };
+    const settleTimer = setTimeout(() => attempt(0), 350);
+    return () => {
+      cancelled = true;
+      clearTimeout(settleTimer);
+      if (retryTimer !== undefined) clearTimeout(retryTimer);
+    };
+  }, [h, id, shown, narrow, targetCols, targetRows]);
+
+  // The resize answer is also the only ownership signal: `409 desk-owns-size`
+  // while a visible desk drives the grid, `200` when this viewer's numbers were
+  // applied. The viewer parser answers terminal queries (PSReadLine asks for
+  // the cursor position before every prompt) only for a pane this page owns, so
+  // the signal must stay fresh: the desk can start or stop showing a pane while
+  // the page stays open. Asking slowly also brings the phone's readable grid
+  // back once the desk lets go, without a reload. A desktop viewer asks for the
+  // grid it already has, which changes nothing when the pane is ours.
+  useEffect(() => {
+    if (!h || !id || !shown) return undefined;
+    if (!geomCols || !geomRows) return undefined;
+    const usable = narrow && targetCols > 0 && targetRows > 0;
+    const cols = usable ? targetCols : geomCols;
+    const rows = usable ? targetRows : geomRows;
+    // The phone's own resize effect above already asks once when the grid
+    // differs; do not race it at the same moment.
+    const resizing = usable && (geomCols !== targetCols || geomRows !== targetRows);
+    const probe = () => { void h.requestGeometry(id, cols, rows); };
+    const first = resizing ? undefined : setTimeout(probe, 350);
+    const timer = setInterval(probe, DESK_OWNED_PROBE_MS);
+    return () => {
+      if (first !== undefined) clearTimeout(first);
+      clearInterval(timer);
+    };
+  }, [h, id, shown, narrow, targetCols, targetRows, geomCols, geomRows]);
+
   if (!shown || !id || !h) return null;
   const geometry = h.geometryOf(id);
+  let content: React.ReactNode;
   if (!h.isLive(id)) {
-    return (
+    content = (
       <Body surfaceId={surfaceId}>
         <span className="truncate max-w-[80%]" style={{ color: 'var(--text-sub)' }}>{title}</span>
         <span className="text-xs">
@@ -163,28 +304,48 @@ export default function WebTerminal({
         </button>
       </Body>
     );
-  }
-  if (!geometry) {
-    return (
+  } else if (!geometry) {
+    content = (
       <Body surfaceId={surfaceId}>
         <span className="text-xs">{t('web.streamConnecting')}</span>
       </Body>
     );
+  } else {
+    const halt = h.inputHaltOf(id);
+    content = (
+      <>
+        <TerminalComponent
+          ptyId={id}
+          cwd={cwd}
+          isActive={isActive}
+          visible={visible}
+          isWorkspaceVisible={isWorkspaceVisible}
+          workspaceId={workspaceId}
+          surfaceId={surfaceId}
+          fixedGeometry={geometry}
+        />
+        {halt && halt.reason !== 'read-only' && <InputHaltBanner halt={halt} onResume={() => h.resumeInput(id)} />}
+      </>
+    );
   }
-  const halt = h.inputHaltOf(id);
+  if (!narrow) return content;
+  // A desk-owned pane cannot be re-gridded, and fitting 151 columns into a
+  // phone shrinks the font to ~4px. Draw it at the phone's target font instead
+  // and let the viewer pan sideways; a grid the phone can fit is left alone.
+  const pan = !!geometry && !!phoneBox && needsReadablePan(geometry.cols, phoneBox.width);
+  const panWidth = pan && geometry ? readableSurfaceWidth(geometry.cols) : undefined;
   return (
-    <>
-      <TerminalComponent
-        ptyId={id}
-        cwd={cwd}
-        isActive={isActive}
-        visible={visible}
-        isWorkspaceVisible={isWorkspaceVisible}
-        workspaceId={workspaceId}
-        surfaceId={surfaceId}
-        fixedGeometry={geometry}
-      />
-      {halt && halt.reason !== 'read-only' && <InputHaltBanner halt={halt} onResume={() => h.resumeInput(id)} />}
-    </>
+    <div ref={boxRef} className="web-phone-terminal" data-web-phone-terminal>
+      <div ref={scrollRef} className="web-phone-terminal-scroll" data-pan={pan ? 'true' : undefined}>
+        <div
+          className="web-phone-terminal-surface"
+          style={panWidth !== undefined ? { width: panWidth } : undefined}
+          data-web-phone-surface
+        >
+          {content}
+        </div>
+      </div>
+      {pan && <div className="web-phone-desk-note" data-web-desk-owns>{t('web.deskOwnsSize')}</div>}
+    </div>
   );
 }

@@ -122,6 +122,7 @@ export default function Dialog({
     <div
       className={`fixed inset-0 ${zIndexClassName} flex items-center justify-center`}
       style={{ backgroundColor: 'var(--backdrop-modal)' }}
+      data-ui-dialog-root
       data-testid={backdropTestId}
       onMouseDown={(e) => {
         if (closeOnBackdrop && e.target === e.currentTarget) onCloseRef.current();

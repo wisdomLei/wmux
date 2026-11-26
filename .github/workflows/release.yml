@@ -413,7 +413,7 @@ jobs:
           $version  = $env:PKG_VERSION
           $sha256   = "$env:SETUP_SHA256".ToLower()
           $setupExe = "wmux-$version.Setup.exe"
-          $url      = "https://github.com/openwong2kim/wmux/releases/download/v$version/$setupExe"
+          $url      = "https://github.com/wisdomLei/wmux/releases/download/v$version/$setupExe"
           $manifest = [ordered]@{
             version  = $version
             setupExe = $setupExe
@@ -511,8 +511,11 @@ jobs:
 
       # Chocolatey and WinGet have no beta channel we use: a prerelease pushed
       # there reaches every user who runs an upgrade.
+      #
+      # This fork never publishes to them at all: their package ids belong to
+      # the upstream project, and a fork release must not reach those users.
       - name: Build Chocolatey package
-        if: steps.pkg.outputs.is_prerelease != 'true'
+        if: false
         env:
           PKG_VERSION: ${{ steps.pkg.outputs.version }}
           SETUP_SHA256: ${{ steps.checksum.outputs.sha256 }}
@@ -529,7 +532,7 @@ jobs:
         shell: pwsh
 
       - name: Push to Chocolatey
-        if: github.event_name == 'push' && steps.pkg.outputs.is_prerelease != 'true' && env.CHOCO_API_KEY != ''
+        if: false
         continue-on-error: true
         run: choco push "out/choco/wmux.$env:PKG_VERSION.nupkg" --source https://push.chocolatey.org --api-key $env:CHOCO_API_KEY
         shell: pwsh
@@ -540,7 +543,9 @@ jobs:
   winget:
     name: Publish to WinGet
     needs: build
-    if: needs.build.outputs.is_prerelease != 'true'
+    # The winget identifier `openwong2kim.wmux` is the upstream author's; this
+    # fork never touches it.
+    if: false
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -548,7 +553,7 @@ jobs:
       WINGET_TOKEN: ${{ secrets.WINGET_TOKEN }}
     steps:
       - name: Publish to winget
-        if: github.event_name == 'push' && env.WINGET_TOKEN != ''
+        if: false
         continue-on-error: true
         uses: vedantmgoyal9/winget-releaser@b7370d4d152efdce803a26cc6ca9eee58cb2ad54 # v2
         with:
@@ -842,7 +847,7 @@ jobs:
           fi
           SHA=$(shasum -a 256 "$ZIP" | awk '{print $1}')
           MANIFEST="$RUNNER_TEMP/update-manifest-darwin-arm64.json"
-          printf '{"version":"%s","file":"%s","sha256":"%s","url":"https://github.com/openwong2kim/wmux/releases/download/%s/%s"}' \
+          printf '{"version":"%s","file":"%s","sha256":"%s","url":"https://github.com/wisdomLei/wmux/releases/download/%s/%s"}' \
             "$VERSION" "$FILE" "$SHA" "$RELEASE_TAG" "$FILE" > "$MANIFEST"
           cat "$MANIFEST"
           gh release upload "$RELEASE_TAG" "$MANIFEST" --clobber

@@ -408,7 +408,7 @@ describe('settings persist across tabs', () => {
     const names = (group: string) => [...(row('theme')?.querySelectorAll<HTMLButtonElement>(
       `[data-theme-group="${group}"] [role="radio"]`,
     ) ?? [])].map((b) => b.getAttribute('aria-label'));
-    expect(names('looks')).toEqual(['Tint', 'Zinc', 'Graphite', 'Paper', 'Amber Line']);
+    expect(names('looks')).toEqual(['Follow system', 'Tint', 'Zinc', 'Graphite', 'Paper', 'Amber Line']);
     const more = names('more');
     expect(more[0]).toBe('Mono');
     expect(more.at(-1)).toBe('Custom');
@@ -419,6 +419,36 @@ describe('settings persist across tabs', () => {
     const heading = row('theme')?.querySelector('.settings-theme-more');
     expect(heading?.textContent).toBe('More themes');
     expect(heading?.nextElementSibling?.getAttribute('data-theme-group')).toBe('more');
+  });
+
+  // Follow-system (2026-11-25): the card leads the looks grid and opens the
+  // two slots; picking a look again leaves the mode.
+  it('appearance › follow system shows its slots and a look card turns it off', async () => {
+    await openTab('appearance');
+    const systemCard = () => row('theme')?.querySelector<HTMLButtonElement>('[data-setting-id="theme-follow-system"]');
+    expect(systemCard()?.getAttribute('aria-checked')).toBe('false');
+    expect(row('theme')?.querySelector('[data-theme-group="follow-system-slots"]')).toBeNull();
+
+    await act(async () => { systemCard()!.click(); });
+    expect(useStore.getState().themeMode).toBe('system');
+    expect(systemCard()?.getAttribute('aria-checked')).toBe('true');
+    const slots = row('theme')?.querySelector('[data-theme-group="follow-system-slots"]');
+    expect(slots?.querySelector('[data-setting-id="theme-light-slot"]')).not.toBeNull();
+    expect(slots?.querySelector('[data-setting-id="theme-dark-slot"]')).not.toBeNull();
+    // No look card reads as chosen while the system decides.
+    const checkedLooks = [...(row('theme')?.querySelectorAll<HTMLButtonElement>(
+      '[data-theme-group="looks"] [role="radio"][aria-checked="true"]',
+    ) ?? [])].map((b) => b.getAttribute('aria-label'));
+    expect(checkedLooks).toEqual(['Follow system']);
+
+    // Picking a look is an explicit choice: it leaves the mode.
+    const tint = [...(row('theme')?.querySelectorAll<HTMLButtonElement>(
+      '[data-theme-group="looks"] [role="radio"]',
+    ) ?? [])].find((b) => b.getAttribute('aria-label') === 'Tint');
+    await act(async () => { tint!.click(); });
+    expect(useStore.getState().themeMode).toBe('fixed');
+    expect(useStore.getState().theme).toBe('tint');
+    expect(row('theme')?.querySelector('[data-theme-group="follow-system-slots"]')).toBeNull();
   });
 
   it('keeps the language picked on General', async () => {

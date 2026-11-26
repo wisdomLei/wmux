@@ -2423,6 +2423,10 @@ primitives plus `Settings/SettingsLayout.tsx` (`SettingsSection`,
   every other built-in theme and Custom follow under a "More themes"
   heading in the section-heading style, each group in its usual order, all
   in one radio group and never collapsed.
+- **Follow system** leads the grid as the first card: a thumbnail split into
+  the two themes it switches between, with two select rows (light / dark)
+  that appear under the grid while it is on. It is a mode, not a look —
+  choosing it lights no look card, and picking any look card leaves it.
 - **Type scale** (2026-10-15, calmer than the chrome scale). Quietness
   comes from weight and size, not a dimmer colour: descriptions, notes,
   inactive nav labels and every heading below the page title are

@@ -1,5 +1,56 @@
 ## [Unreleased]
 
+## [4.17.0-alei.1] — 2026-11-26
+
+The first release of alei wisdom's independent fork. It is based on upstream
+wmux v4.17.0 plus the upstream commits through `55bf0801a` (2026-11-26), and
+adds the changes below. It is published as a prerelease and is Windows-only;
+see [FORK.md](FORK.md).
+
+### Added
+
+- **Follow system light/dark appearance.** Settings › Appearance leads with a
+  Follow system card; it keeps one theme for light mode and one for dark mode
+  and switches as the system does, at runtime too. Picking a theme card leaves
+  the mode. The mode and both slots are saved in `session.json`. On Windows the
+  window's glass appearance stays on `system` in this mode, so
+  `prefers-color-scheme` reports the real system value.
+
+- **Approvals from the browser client.** The web client can show a pending
+  question or permission prompt with the daemon's structured choices, the full
+  command and the time an unanswered prompt denies itself, and can approve or
+  deny when the device is allowed to answer.
+
+- **A touch key bar for the phone client.** Esc, Tab, Ctrl, arrows and the
+  other keys a software keyboard lacks, sent through the terminal's own input
+  grant, ordering and halt rules.
+
+- **Phone-first web layout.** Below 640px wide, the web client uses a drawer,
+  one pane at a time and a touch layout. The phone asks its pane for its own
+  grid instead of a desk-sized PTY, and the software keyboard no longer
+  shrinks the terminal font; the app moves above the keyboard and keeps its
+  grid.
+
+### Changed
+
+- **Complete Simplified Chinese strings for Settings, Fleet, panes, diffs,
+  integration setup, the Claude integration screens and the web client.**
+  Hundreds of keys that fell back to English now show Chinese.
+
+- **This fork follows `wisdomLei/wmux` for releases.** The updater no longer
+  points at the upstream repository, a 404 from its update feed reads as "no
+  update", and the release workflow publishes a Windows prerelease only —
+  never WinGet, Chocolatey or the upstream package ids.
+
+### Fixed
+
+- **`⏵`/`⏺`/`⎿`/`✳`/`✻` render on Android.** The web client bundles a small
+  Noto Sans Symbols 2 subset as `wmux Symbols`, because Android's fonts lack
+  those Claude TUI glyphs.
+
+- **The browser build no longer blanks a pane under WebGL.** It uses xterm's
+  DOM renderer, which paints reliably at phone widths and DPR > 1.
+
 ## [4.17.0] — 2026-11-20
 
 ### Added

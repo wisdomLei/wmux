@@ -25,8 +25,8 @@ import { IPC } from '../../../shared/constants';
 import { deliberateSleep } from '../../../test-utils/waitFor';
 
 const FAKE_VERSION = '9.9.9';
-const EXPECTED_WIN32_FEED = `https://update.electronjs.org/openwong2kim/wmux/win32/${FAKE_VERSION}`;
-const EXPECTED_DARWIN_FEED = `https://update.electronjs.org/openwong2kim/wmux/darwin-arm64/${FAKE_VERSION}`;
+const EXPECTED_WIN32_FEED = `https://update.electronjs.org/wisdomLei/wmux/win32/${FAKE_VERSION}`;
+const EXPECTED_DARWIN_FEED = `https://update.electronjs.org/wisdomLei/wmux/darwin-arm64/${FAKE_VERSION}`;
 
 /**
  * Quit hooks every AutoUpdater needs. Required, not optional: the macOS install
@@ -397,6 +397,31 @@ describe('AutoUpdater platform gating', () => {
 
     updater.stop();
   });
+
+  // This fork publishes prereleases, which update.electronjs.org never serves;
+  // its answer is 404, not 204. A background poll must read that as "nothing
+  // to install" instead of an error the Settings page would repeat every 30
+  // minutes.
+  it('win32: a 404 from the update feed reads as up to date, not an error', async () => {
+    vi.useFakeTimers();
+    const { AutoUpdater } = await loadForPlatform('win32', () => ({
+      statusCode: 404,
+      body: Buffer.from('No updates found'),
+    }));
+
+    const sent: Array<{ channel: string; data: unknown }> = [];
+    const win = {
+      isDestroyed: () => false,
+      webContents: { send: (channel: string, data: unknown) => { sent.push({ channel, data }); } },
+    };
+    const updater = new AutoUpdater(() => win as never, quitHooks());
+    updater.start();
+    await vi.advanceTimersByTimeAsync(15_000);
+
+    expect(sent.map((s) => s.channel)).toContain(IPC.UPDATE_NOT_AVAILABLE);
+    expect(sent.map((s) => s.channel)).not.toContain(IPC.UPDATE_ERROR);
+    updater.stop();
+  });
 });
 
 // #502 — Squirrel's installer crashes when run while the app is still alive,
@@ -408,7 +433,7 @@ describe('AutoUpdater #502 — quit after launching the installer', () => {
   const UPDATE_VERSION = '9.9.10';
   const INSTALLER_BYTES = Buffer.from('fake-installer-bytes-for-#502');
   const INSTALLER_SHA256 = createHash('sha256').update(INSTALLER_BYTES).digest('hex');
-  const DOWNLOAD_URL = `https://github.com/openwong2kim/wmux/releases/download/v${UPDATE_VERSION}/wmux-${UPDATE_VERSION}.Setup.exe`;
+  const DOWNLOAD_URL = `https://github.com/wisdomLei/wmux/releases/download/v${UPDATE_VERSION}/wmux-${UPDATE_VERSION}.Setup.exe`;
 
   const downloadRoutes = (url: string) => {
     if (url === EXPECTED_WIN32_FEED) {
@@ -962,7 +987,7 @@ describe('AutoUpdater darwin-arm64 install (Squirrel.Mac loopback feed)', () => 
   const ZIP_BYTES = Buffer.from('fake-darwin-zip-bytes');
   const ZIP_SHA256 = createHash('sha256').update(ZIP_BYTES).digest('hex');
   const ZIP_NAME = `wmux-darwin-arm64-${UPDATE_VERSION}.zip`;
-  const DOWNLOAD_URL = `https://github.com/openwong2kim/wmux/releases/download/v${UPDATE_VERSION}/${ZIP_NAME}`;
+  const DOWNLOAD_URL = `https://github.com/wisdomLei/wmux/releases/download/v${UPDATE_VERSION}/${ZIP_NAME}`;
 
   const darwinRoutes = (url: string) => {
     if (url === EXPECTED_DARWIN_FEED) {

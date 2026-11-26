@@ -625,7 +625,9 @@ const config: ForgeConfig = {
             name: 'wmux',
             setupExe: SQUIRREL_SETUP_EXE,
             setupIcon: './assets/icon.ico',
-            iconUrl: 'https://raw.githubusercontent.com/openwong2kim/wmux/main/assets/icon.ico',
+            // The fork's own main, so an installer never pulls the upstream
+            // author's icon (or sends them the request).
+            iconUrl: 'https://raw.githubusercontent.com/wisdomLei/wmux/main/assets/icon.ico',
           }),
         ]
       : []),

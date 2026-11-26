@@ -80,6 +80,11 @@ export function webElectronApiImpl(
     // daemon link of its own to report — its streams reconnect themselves.
     daemon: { onConnected: () => () => undefined },
     pty: lateBoundPty(getPtyBridge),
+    // Dictation needs main's model store and the preload's bridge; a browser
+    // has neither. An explicit undefined (not a denied callable) makes
+    // `dictationAvailable()` false, so no dictation host mounts and reads a
+    // status that cannot exist.
+    dictation: undefined,
     // The daemon's OS (from /api/config), for key encodings the pane's host
     // decides; null until known. `platform` above stays the browser's, which
     // is what the keyboard in front of the user follows.

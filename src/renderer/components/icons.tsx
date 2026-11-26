@@ -347,6 +347,16 @@ export function IconTerminal({ size = 14 }: { size?: number }) {
   );
 }
 
+/** Sidebar — a window with its left column marked. Opens the phone drawer. */
+export function IconSidebar({ size = 14 }: { size?: number }) {
+  return (
+    <Icon size={size}>
+      <rect x="1.8" y="2.6" width="10.4" height="8.8" rx="1" />
+      <line x1="5.6" y1="2.6" x2="5.6" y2="11.4" />
+    </Icon>
+  );
+}
+
 /** Split right — a pane divided by a vertical seam into two side-by-side
  *  columns. Matches wmux `splitPane(_, 'horizontal')` (the new pane opens to
  *  the right; PaneContainer maps 'horizontal' → a row of columns). */

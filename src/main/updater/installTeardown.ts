@@ -1028,7 +1028,7 @@ export function buildWaiterScript(plan: WaiterPlan, launchStampPath?: string): s
     // what went missing, it cannot. This MessageBox is the only surface that
     // reaches that user -- best-effort, gated on the Forms assembly having
     // actually loaded for the wait window earlier.
-    `if ($formsLoaded) { try { [System.Windows.Forms.MessageBox]::Show('The wmux update did not complete: ' + ($missing -join ', ') + ' is missing from the installation, and wmux may no longer start. Please reinstall from the latest Setup.exe (github.com/openwong2kim/wmux/releases).', 'wmux update', [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning) | Out-Null } catch { } }`,
+    `if ($formsLoaded) { try { [System.Windows.Forms.MessageBox]::Show('The wmux update did not complete: ' + ($missing -join ', ') + ' is missing from the installation, and wmux may no longer start. Please reinstall from the latest Setup.exe (github.com/wisdomLei/wmux/releases).', 'wmux update', [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Warning) | Out-Null } catch { } }`,
     `exit 6`,
   ].join('\n');
 }

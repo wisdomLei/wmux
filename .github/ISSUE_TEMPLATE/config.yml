@@ -1,11 +1,11 @@
 blank_issues_enabled: false
 contact_links:
-  - name: 💬 Questions & ideas (Discussions)
+  - name: 💬 Upstream discussions
     url: https://github.com/openwong2kim/wmux/discussions
-    about: Ask a question, share a setup, or float an open-ended idea before it becomes an issue.
+    about: Questions about upstream wmux itself are answered by the original author there.
   - name: 🔒 Report a security vulnerability
-    url: https://github.com/openwong2kim/wmux/security/advisories/new
-    about: Please report security issues privately here — do not open a public issue.
+    url: https://github.com/wisdomLei/wmux/security/advisories/new
+    about: Please report security issues in this fork privately here — do not open a public issue.
   - name: 📖 Documentation
-    url: https://github.com/openwong2kim/wmux#readme
-    about: Installation, keyboard shortcuts, and the full feature list live in the README.
+    url: https://github.com/wisdomLei/wmux#readme
+    about: Installation notes for this fork, keyboard shortcuts, and the full feature list live in the README.

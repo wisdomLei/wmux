@@ -50,9 +50,11 @@ export function sanitizeFontFamily(input: string): string {
 // Fallback chain appended after the user's font. Cross-platform:
 // mac 모노스페이스(Menlo/SF Mono/Monaco) → win 모노스페이스(Consolas/Courier New)
 // → 한글 폴백(mac: Apple SD Gothic Neo, win: Malgun Gothic — 고정폭 한글) →
-// generic `monospace`. 각 플랫폼에 없는 폰트는 CSS가 그냥 건너뛰므로 무해하다.
+// `wmux Symbols`(browser build only: the Claude TUI's ⏵/⏺/⎿/✳/✻, which
+// Android's fonts lack) → generic `monospace`. 각 플랫폼에 없는 폰트는 CSS가
+// 그냥 건너뛰므로 무해하다.
 const FONT_FALLBACK_CHAIN =
-  "'Menlo', 'SF Mono', 'Monaco', 'Consolas', 'Courier New', 'Apple SD Gothic Neo', 'Malgun Gothic', monospace";
+  "'Menlo', 'SF Mono', 'Monaco', 'Consolas', 'Courier New', 'Apple SD Gothic Neo', 'Malgun Gothic', 'wmux Symbols', monospace";
 
 /**
  * Build the xterm/CSS `font-family` string for a user-chosen font, sanitized

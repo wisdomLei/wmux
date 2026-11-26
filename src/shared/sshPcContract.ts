@@ -96,7 +96,7 @@ export function serverArtifactName(version: string, arch: ServerArch): string {
 }
 
 export function serverArtifactUrl(version: string, arch: ServerArch): string {
-  return `https://github.com/openwong2kim/wmux/releases/download/v${version}/${serverArtifactName(version, arch)}`;
+  return `https://github.com/wisdomLei/wmux/releases/download/v${version}/${serverArtifactName(version, arch)}`;
 }
 
 /**

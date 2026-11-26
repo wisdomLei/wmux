@@ -47,7 +47,13 @@ function paint(tokens: Record<string, string>): void {
 
 const heardLevels: string[] = [];
 
-function mount(level: string, tokens: Record<string, string>, windowsBuildNumber: number | null, systemDark: boolean): () => void {
+function mount(
+  level: string,
+  tokens: Record<string, string>,
+  windowsBuildNumber: number | null,
+  systemDark: boolean,
+  followSystem?: () => boolean,
+): () => void {
   (window as unknown as { electronAPI: unknown }).electronAPI = {
     platform: 'win32',
     windowsBuildNumber,
@@ -59,7 +65,7 @@ function mount(level: string, tokens: Record<string, string>, windowsBuildNumber
   const root = document.documentElement;
   paint(tokens);
   root.setAttribute('data-glass-level', level);
-  const stop = installWindowGlass(root, undefined, (sent) => heardLevels.push(sent));
+  const stop = installWindowGlass(root, undefined, (sent) => heardLevels.push(sent), followSystem);
   installed.push(stop);
   return stop;
 }
@@ -105,6 +111,21 @@ describe('installWindowGlass on Windows 11 22H2+', () => {
     document.documentElement.style.setProperty('--bg-base', '#171717');
     await flush();
     expect(setGlass).toHaveBeenCalledTimes(1);
+    stop();
+  });
+
+  // Follow-system: the OS appearance is the input that picks the theme, so the
+  // appearance must stay 'system' or the page would stop hearing the OS.
+  it('leaves the appearance to the system while the theme follows it', async () => {
+    let following = true;
+    const stop = mount('soft', TINT, 26200, true, () => following);
+    expect(setAppearance).toHaveBeenCalledWith('system');
+    expect(setAppearance).not.toHaveBeenCalledWith('dark');
+
+    following = false;
+    document.documentElement.setAttribute('data-theme', 'tint');
+    await flush();
+    expect(setAppearance).toHaveBeenLastCalledWith('dark');
     stop();
   });
 });

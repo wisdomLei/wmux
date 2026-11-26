@@ -73,6 +73,123 @@ export interface PaneGeometry {
 /** Whether this caller may type: unknown until `/api/config` answers. */
 export type InputState = 'checking' | 'allowed' | 'read-only';
 
+/**
+ * What this page can do with an agent's own permission dialog. Without these
+ * tokens `/api/approvals` only carries the informational card, and every
+ * answer is refused 501 `answer-in-terminal`.
+ */
+export const APPROVAL_CAPS = 'terminal-prompt-answer, terminal-prompt-decline';
+
+export interface ApprovalChoice {
+  /** The digit the TUI accepts for this row. */
+  key: string;
+  label: string;
+}
+
+/** One approval as `/api/approvals` lists it; unknown kinds are shown, not answered. */
+export interface ApprovalRequest {
+  id: string;
+  sessionId?: string;
+  agent?: string;
+  kind?: string;
+  state?: string;
+  createdAt?: string;
+  workspaceId?: string;
+  toolName?: string;
+  summary?: string;
+  risk?: string;
+  question?: string;
+  reason?: string;
+  /** The agent's own labels when the daemon has no per-option keys. */
+  options?: string[];
+  choices?: ApprovalChoice[];
+  promptFingerprint?: string;
+  hasDetail?: boolean;
+  autoDenyAt?: string;
+  /** A digit from this phone is in the pane; the record resolves when the dialog closes. */
+  pressedAt?: number;
+  decision?: string;
+  selectedChoiceKey?: string;
+  resolvedBy?: string;
+}
+
+export interface ApprovalList {
+  pending: ApprovalRequest[];
+  recentlyResolved: ApprovalRequest[];
+}
+
+export type ApprovalOutcome =
+  | { ok: true }
+  | { ok: false; code: 'too-soon' | 'changed' | 'expired' | 'already' | 'unsupported' | 'refused' | 'offline'; detail?: string };
+
+export interface ApprovalDecision {
+  decision: 'approve' | 'deny';
+  choiceKey?: string;
+  promptFingerprint?: string;
+}
+
+export interface ApprovalDetail {
+  command: string;
+  toolName?: string;
+  truncated?: boolean;
+}
+
+/** The wire's refusal, as words this page can act on. */
+export function approvalOutcome(status: number, body: unknown): ApprovalOutcome {
+  const error = body && typeof body === 'object' && typeof (body as { error?: unknown }).error === 'string'
+    ? (body as { error: string }).error
+    : '';
+  if (status === 425 || error === 'answer-too-soon') return { ok: false, code: 'too-soon' };
+  if (status === 410 || error === 'expired') return { ok: false, code: 'expired' };
+  if (error === 'prompt-changed') return { ok: false, code: 'changed' };
+  if (error === 'already-answered' || error === 'already-resolved') return { ok: false, code: 'already' };
+  if (status === 501) return { ok: false, code: 'unsupported' };
+  return { ok: false, code: 'refused', detail: error || String(status) };
+}
+
+function approvalChoice(v: unknown): ApprovalChoice | null {
+  if (!v || typeof v !== 'object') return null;
+  const c = v as Record<string, unknown>;
+  return typeof c.key === 'string' && typeof c.label === 'string' ? { key: c.key, label: c.label } : null;
+}
+
+/** One record from `/api/approvals`, or null when it has no usable id. */
+export function approvalRequest(v: unknown): ApprovalRequest | null {
+  if (!v || typeof v !== 'object') return null;
+  const r = v as Record<string, unknown>;
+  if (typeof r.id !== 'string' || !r.id) return null;
+  const str = (k: string): string | undefined => (typeof r[k] === 'string' ? r[k] as string : undefined);
+  const choices = Array.isArray(r.choices)
+    ? r.choices.map(approvalChoice).filter((c): c is ApprovalChoice => c !== null)
+    : [];
+  const options = Array.isArray(r.options)
+    ? r.options.filter((o): o is string => typeof o === 'string')
+    : [];
+  return {
+    id: r.id,
+    sessionId: str('sessionId'),
+    agent: str('agent'),
+    kind: str('kind'),
+    state: str('state'),
+    createdAt: str('createdAt'),
+    workspaceId: str('workspaceId'),
+    toolName: str('toolName'),
+    summary: str('summary'),
+    risk: str('risk'),
+    question: str('question'),
+    reason: str('reason'),
+    options: options.length > 0 ? options : undefined,
+    choices: choices.length > 0 ? choices : undefined,
+    promptFingerprint: str('promptFingerprint'),
+    hasDetail: r.hasDetail === true,
+    autoDenyAt: str('autoDenyAt'),
+    pressedAt: typeof r.pressedAt === 'number' ? r.pressedAt : undefined,
+    decision: str('decision'),
+    selectedChoiceKey: str('selectedChoiceKey'),
+    resolvedBy: str('resolvedBy'),
+  };
+}
+
 export interface InputHalt {
   /** Short machine reason: offline | refused:<code> | unauthorized | too-large. */
   reason: string;
@@ -199,11 +316,16 @@ export function createWebPty(deps: WebPtyDeps) {
   const failures = new Map<string, number>();
   const failed = new Set<string>();
   const geometry = new Map<string, PaneGeometry>();
+  /** Panes the daemon says a visible desk owns (`409 desk-owns-size`). */
+  const deskOwnsSize = new Map<string, boolean>();
+  /** Latest resize request per pane, so a slow older answer cannot win. */
+  const geometryRequestSeq = new Map<string, number>();
   const gates = new Map<string, SnapshotGate>();
   const inputChain = new Map<string, Promise<void>>();
   const halts = new Map<string, InputHalt>();
   let inputState: InputState = 'checking';
   let hostPlatform: string | null = null;
+  let terminalPromptDecline = false;
   let version = 0;
 
   let ticket = '';
@@ -434,8 +556,9 @@ export function createWebPty(deps: WebPtyDeps) {
         const res = await request('/api/config', { cache: 'no-store' });
         if (isRefused(res)) { deps.onUnauthorized?.(); return; }
         if (res.ok) {
-          const cfg = await res.json() as { allowInput?: unknown; hostPlatform?: unknown };
+          const cfg = await res.json() as { allowInput?: unknown; hostPlatform?: unknown; terminalPromptDecline?: unknown };
           if (typeof cfg.hostPlatform === 'string') hostPlatform = cfg.hostPlatform;
+          terminalPromptDecline = cfg.terminalPromptDecline === true;
           setInputState(cfg.allowInput === true ? 'allowed' : 'read-only');
           ok = true;
         }
@@ -616,7 +739,51 @@ export function createWebPty(deps: WebPtyDeps) {
     isLive: (ptyId: string) => live.includes(ptyId),
     /** The stream gave up (quota, credential, server): the pane shows why. */
     isUnavailable: (ptyId: string) => failed.has(ptyId),
+    /** The stream's `meta` geometry and `GET /api/sessions` snapshots. */
     geometryOf: (ptyId: string): PaneGeometry | undefined => geometry.get(ptyId),
+    /**
+     * Whether a visible desktop currently owns this pane's size: true from a
+     * `409 desk-owns-size`, false from a `200`, undefined until one answers.
+     * Undefined keeps the viewer parser absorbing terminal queries, so a desk
+     * answer is never doubled before ownership is known.
+     */
+    deskOwnsSize: (ptyId: string): boolean | undefined => deskOwnsSize.get(ptyId),
+    /**
+     * Ask the daemon for a readable grid (`POST /api/sessions/:id/resize`).
+     *
+     * While the desk is actually showing the pane it owns the size, and the
+     * 409 names the grid to render at instead; both answers are stored so the
+     * terminal re-renders at what the daemon holds. The latest request for a
+     * pane wins: an older, slower answer never overwrites a newer one.
+     */
+    async requestGeometry(ptyId: string, cols: number, rows: number): Promise<PaneGeometry | null> {
+      if (!ptyId || !Number.isInteger(cols) || !Number.isInteger(rows) || cols <= 0 || rows <= 0) return null;
+      const seq = (geometryRequestSeq.get(ptyId) ?? 0) + 1;
+      geometryRequestSeq.set(ptyId, seq);
+      try {
+        const res = await request(
+          `/api/sessions/${encodeURIComponent(ptyId)}/resize`,
+          { method: 'POST', body: JSON.stringify({ cols, rows }) },
+          { 'Content-Type': 'application/json' },
+        );
+        if (isRefused(res)) { deps.onUnauthorized?.(); return null; }
+        if (res.status !== 200 && res.status !== 409) return null;
+        const body = await res.json().catch(() => null) as unknown;
+        if (geometryRequestSeq.get(ptyId) !== seq) return null;
+        // Ownership is read here and nowhere else: 200 means the daemon applied
+        // this viewer's numbers (no visible desk); `desk-owns-size` means a
+        // visible desk still drives the grid. A 409 of another kind (deferred,
+        // dead pane) says nothing about ownership and leaves the last answer.
+        if (res.status === 200) deskOwnsSize.set(ptyId, false);
+        else if ((body as { error?: unknown } | null)?.error === 'desk-owns-size') deskOwnsSize.set(ptyId, true);
+        const g = validGeometry(body);
+        if (!g) return null;
+        setGeometry(ptyId, g);
+        return g;
+      } catch {
+        return null;
+      }
+    },
     /** Pane sizes from `GET /api/sessions`. */
     setSessions(rows: ReadonlyArray<{ id: string; cols?: unknown; rows?: unknown }>): void {
       for (const row of rows) {
@@ -624,6 +791,78 @@ export function createWebPty(deps: WebPtyDeps) {
         if (g) setGeometry(row.id, g);
       }
     },
+    /** Pending approvals, read with this page's answer capability. */
+    async listApprovals(): Promise<ApprovalList | null> {
+      try {
+        const res = await request('/api/approvals', { cache: 'no-store' }, { 'X-Wmux-Client-Caps': APPROVAL_CAPS });
+        if (isRefused(res)) { deps.onUnauthorized?.(); return null; }
+        if (!res.ok) return null;
+        const body = await res.json().catch(() => null) as { pending?: unknown; recentlyResolved?: unknown } | null;
+        if (!body || !Array.isArray(body.pending)) return null;
+        const pending = body.pending.map(approvalRequest).filter((r): r is ApprovalRequest => r !== null);
+        const recentlyResolved = Array.isArray(body.recentlyResolved)
+          ? body.recentlyResolved.map(approvalRequest).filter((r): r is ApprovalRequest => r !== null)
+          : [];
+        return { pending, recentlyResolved };
+      } catch {
+        return null;
+      }
+    },
+    /**
+     * Answer one approval. `choiceKey` selects a row; a terminal prompt also
+     * requires the fingerprint it was shown with (the daemon re-reads the
+     * screen and refuses `prompt-changed` rather than press a stale dialog).
+     */
+    async decideApproval(id: string, decision: ApprovalDecision): Promise<ApprovalOutcome> {
+      try {
+        const res = await request(`/api/approvals/${encodeURIComponent(id)}`, {
+          method: 'POST',
+          body: JSON.stringify(decision),
+        }, { 'Content-Type': 'application/json', 'X-Wmux-Client-Caps': APPROVAL_CAPS });
+        if (isRefused(res)) { deps.onUnauthorized?.(); return { ok: false, code: 'refused' }; }
+        if (res.ok) return { ok: true };
+        return approvalOutcome(res.status, await res.json().catch(() => null));
+      } catch {
+        return { ok: false, code: 'offline' };
+      }
+    },
+    /** Decline a terminal prompt with one Esc (the WebSearch / ExitPlanMode path). */
+    async declineApproval(id: string, promptFingerprint?: string): Promise<ApprovalOutcome> {
+      try {
+        const res = await request(`/api/approvals/${encodeURIComponent(id)}/decline`, {
+          method: 'POST',
+          body: JSON.stringify(promptFingerprint ? { promptFingerprint } : {}),
+        }, { 'Content-Type': 'application/json', 'X-Wmux-Client-Caps': APPROVAL_CAPS });
+        if (isRefused(res)) { deps.onUnauthorized?.(); return { ok: false, code: 'refused' }; }
+        if (res.ok) return { ok: true };
+        return approvalOutcome(res.status, await res.json().catch(() => null));
+      } catch {
+        return { ok: false, code: 'offline' };
+      }
+    },
+    /** A terminal prompt's whole command; null when the server cannot show it. */
+    async approvalDetail(id: string): Promise<ApprovalDetail | null> {
+      try {
+        const res = await request(
+          `/api/approvals/${encodeURIComponent(id)}/detail`,
+          { cache: 'no-store' },
+          { 'X-Wmux-Client-Caps': APPROVAL_CAPS },
+        );
+        if (isRefused(res)) { deps.onUnauthorized?.(); return null; }
+        if (!res.ok) return null;
+        const body = await res.json().catch(() => null) as Record<string, unknown> | null;
+        if (!body || typeof body.command !== 'string') return null;
+        return {
+          command: body.command,
+          toolName: typeof body.toolName === 'string' ? body.toolName : undefined,
+          truncated: body.truncated === true,
+        };
+      } catch {
+        return null;
+      }
+    },
+    /** Whether `/api/approvals/<id>/decline` is available on this server. */
+    terminalPromptDecline: (): boolean => terminalPromptDecline,
     /** Start re-reading `/api/config` (now, then periodically, backing off on failure). */
     startConfig(): () => void {
       configStopped = false;

@@ -6130,13 +6130,31 @@ whose app page was not built serves the classic page at `/`.
     beyond that shows a placeholder with "Show live", which takes the slot of
     the least recently activated pane; a freed slot goes to the longest waiter.
     At phone width only the selected pane is shown, so only it streams.
-  - The grid is the desktop's: cols/rows from `/api/sessions` and the stream's
-    `meta` (including mid-stream resize metas). The page fits the **font size**
-    to its box — never a CSS transform, which would misplace mouse reports — and
-    never asks to resize a pane.
+  - The grid is the pane's: cols/rows from `/api/sessions` and the stream's
+    `meta` (including mid-stream resize metas), and the page fits the **font
+    size** to its box — never a CSS transform, which would misplace mouse
+    reports. A phone asks for the grid it can read with
+    `POST /api/sessions/<id>/resize` (see the resize route): `409
+    desk-owns-size` means a visible desktop drives the grid, and the phone
+    draws that grid at its target font and pans sideways instead of shrinking
+    the type to ~4 px. Every viewer re-asks slowly (10 s) for its wanted grid —
+    the phone's readable grid, or a wide browser's current one, which changes
+    nothing — because the answer is also the only ownership signal: 200 means
+    this viewer's numbers were applied, `desk-owns-size` means the desk owns
+    the pane. That answer drives the query rule below.
+  - The software keyboard does NOT change that grid. The page's viewport meta
+    uses `interactive-widget=resizes-visual`, so opening the keyboard leaves
+    the layout viewport (and `100dvh`) alone; the app keeps the full screen
+    height and shifts its column up by the part the keyboard covers
+    (`src/renderer/web/viewport.ts`). The terminal box and font size are
+    untouched, and the key bar and the row being typed into stay above the
+    keyboard. Feeding `visualViewport.height` into the app's height instead
+    makes the whole terminal visibly smaller on every keystroke.
   - Each `snapshot` is replayed as one write starting with RIS (a re-opened
     stream repaints instead of stacking). Queries the snapshot replays are
-    not answered (the viewer answers none — see below). The stale-mode reset
+    never answered, even when the page owns the pane: they were answered when
+    live, and a second answer lands in the shell as typing (`[?1;2c` on the
+    prompt). The stale-mode reset
     uses the shared gate (`commandRunning`,
     `resumeAgent` from `meta`) capped at the alive-shell set: mouse and focus
     reporting are cleared, bracketed paste (`?2004`) never is.
@@ -6156,12 +6174,17 @@ whose app page was not built serves the classic page at `/`.
     An unconfirmed keystroke is never re-sent (it may have arrived); input
     receipts are not used per keystroke (two durable writes each, 10 000 a day
     shared by every client).
-  - The browser terminal is a viewer and **answers no terminal query** (DA,
-    DSR/CPR, DECRQM, XTVERSION, DECRQSS, OSC 4/10/11/12 `?`), replayed or live,
-    and sends no focus reports: the pane's owner (the desktop's terminal)
-    answers. With no desktop attached a query goes unanswered and the app
-    falls back on its own timeout — a viewer that answers can type into a
-    shell; one that stays quiet cannot.
+  - Terminal queries (DA, DSR/CPR, DECRQM, XTVERSION, DECRQSS, OSC
+    4/10/11/12 `?`) are absorbed while a visible desktop owns the pane, for any
+    caller who may not type, and always when replayed: the pane's owner
+    answers, a second answer reaches the shell as junk, and a viewer that
+    cannot type must not answer. The exception is a LIVE query on a pane this
+    page owns — the resize answer was 200 — on a caller holding the input
+    grant: there this page is the only terminal, so it answers. Without that,
+    a query-driven line editor (PSReadLine asks for the cursor position before
+    every prompt) waits out its retry timeout, observed as delayed echo and a
+    "terminal size too small" banner. Focus reports (`?1004`) are never sent:
+    that is the viewer's focus, not the owner's.
   - Paste (⌘V, Ctrl+V, Ctrl+Shift+V) is the browser's own paste event, so it
     works outside a secure context; copy falls back to the legacy copy
     command there.

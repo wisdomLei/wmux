@@ -19,6 +19,7 @@ import { WEB_PTY_BRIDGE_KEY, type PendingCopyState } from './webElectronApi';
 import { createLeave, type WebSession } from './webCredential';
 import '../styles/globals.css';
 import '../styles/ui.css';
+import './web.css';
 
 /** Set by vite.web.config.ts; true only in WMUX_WEB_DEBUG=1 builds. */
 declare const __WMUX_WEB_DEBUG__: boolean | undefined;
@@ -60,12 +61,30 @@ function start(session: WebSession): void {
     setPendingCopyHint(state === 'waiting', () => webClip.finishPendingCopy?.());
     if (state === 'copied') showCopyToastText(t('terminal.copied'));
   });
-  // Every terminal this page mounts is a viewer: it never answers terminal
-  // queries and never arms mouse reporting it could not send (viewerParser.ts).
-  // A terminal registers in its mount effect, before its stream opens.
+  // Every terminal this page mounts is a viewer, and a visible desk's terminal
+  // wins: queries stay absorbed and mouse reporting it could not send stays
+  // disarmed (viewerParser.ts). The exception is a live query on a pane no desk
+  // is showing, on a caller who may type — this page is then the only answerer,
+  // and a query-driven line editor (PSReadLine's cursor-position report) would
+  // stall without one. `deskOwnsSize` is undefined until a resize answer names
+  // the owner, so the first frames keep absorbing either way.
+  //
+  // REPLAYED queries stay absorbed even then: a switching pane replays its old
+  // screen, whose DA/DSR bytes were already answered live. Answering them again
+  // sends the report into the shell as typing — the `[?1;2c` junk on the
+  // prompt. The replay mute (the same one OSC 52 uses) is true exactly while
+  // stored bytes parse, so it separates those from live ones. A terminal
+  // registers in its mount effect, before its stream opens.
   onTerminalRegistered((ptyId) => {
     const term = terminalRegistry.get(ptyId);
-    if (term) installViewerParser(term, { mayInput: () => hub.inputState() !== 'read-only' });
+    if (term) {
+      installViewerParser(term, {
+        mayInput: () => hub.inputState() !== 'read-only',
+        answerQueries: () => hub.inputState() === 'allowed'
+          && hub.deskOwnsSize(ptyId) === false
+          && !isReplayMuted(getTerminalReplayMute(term)),
+      });
+    }
   });
   // Dogfood hook, as on the classic page: the real risk here is a leaked stream.
   w.__wmuxWebDebug = {

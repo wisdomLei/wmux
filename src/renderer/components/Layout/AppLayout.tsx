@@ -419,6 +419,10 @@ function buildSessionData(dumped: Map<string, boolean>): SessionData {
     channelDockVisible: state.channelDockVisible,
     // User preferences
     theme: state.theme,
+    // How the theme was chosen and the pair it follows in 'system' mode.
+    themeMode: state.themeMode,
+    lightTheme: state.lightTheme,
+    darkTheme: state.darkTheme,
     locale: state.locale,
     terminalFontSize: state.terminalFontSize,
     uiScale: state.uiScale,
