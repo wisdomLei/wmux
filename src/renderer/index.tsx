@@ -7,6 +7,7 @@ import { installChromeScrollPin } from './utils/pinChromeScroll';
 import { installWindowGlass } from './utils/windowGlass';
 import { hasRoundedWindowCorners } from '../shared/windowCorners';
 import { rememberStartPolarity, settleStartTheme, startTheme } from './utils/startTheme';
+import { installFollowSystemTheme } from './utils/followSystemTheme';
 import { installDocumentHiddenMotion, installSystemReducedMotion } from './utils/reducedMotion';
 import { installScreenReader } from './utils/screenReader';
 import { installScrollbackCompactionOnFlag } from './terminal/scrollbackCompactionBootstrap';
@@ -57,7 +58,16 @@ const saveWindowAppearance = (appearance: 'dark' | 'light') => {
 };
 const onSessionSettingsLoaded = () => {
   settleStartTheme(document.documentElement, shownStartTheme, useStore.getState().theme);
-  installWindowGlass(document.documentElement, saveWindowAppearance, (level) => useStore.getState().setWindowGlassEffective(level));
+  // Follow-system mode: loadSession resolved the slot for the OS appearance
+  // that was current then; this keeps it resolved from here on. Installed
+  // before glass, so a switch restyles the theme and glass follows it.
+  installFollowSystemTheme(() => useStore.getState().syncSystemTheme());
+  installWindowGlass(
+    document.documentElement,
+    saveWindowAppearance,
+    (level) => useStore.getState().setWindowGlassEffective(level),
+    () => useStore.getState().themeMode === 'system',
+  );
 };
 if (useStore.getState().sessionSettingsLoaded) onSessionSettingsLoaded();
 else {

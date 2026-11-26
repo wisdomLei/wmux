@@ -10,20 +10,28 @@
 
 Run fleets of AI agents — Claude Code, Codex, Gemini, or any CLI — side by side, native on **Windows and macOS**. Keep only the hunks you want from their work, and hand jobs to bots in plain words.
 
-[![Windows 10/11](https://img.shields.io/badge/Windows-10%2F11-0078D6?logo=windows&logoColor=white)](https://github.com/openwong2kim/wmux/releases/latest)
-[![macOS](https://img.shields.io/badge/macOS-Apple%20Silicon-000000?logo=apple&logoColor=white)](https://github.com/openwong2kim/wmux/releases/latest)
+[![Windows 10/11](https://img.shields.io/badge/Windows-10%2F11-0078D6?logo=windows&logoColor=white)](https://github.com/wisdomLei/wmux/releases)
+[![macOS (upstream)](https://img.shields.io/badge/macOS-Apple%20Silicon-000000?logo=apple&logoColor=white)](https://github.com/openwong2kim/wmux/releases)
 [![iOS app](https://img.shields.io/badge/iOS-App%20Store-0D96F6?logo=apple&logoColor=white)](https://apps.apple.com/app/wmux-workspace-for-ai-agents/id6797904556)
-[![Latest release](https://img.shields.io/github/v/release/openwong2kim/wmux?color=2ea44f&label=release)](https://github.com/openwong2kim/wmux/releases/latest)
-[![Downloads](https://img.shields.io/github/downloads/openwong2kim/wmux/total?color=blue&label=downloads)](https://github.com/openwong2kim/wmux/releases)
+[![Latest release](https://img.shields.io/github/v/release/wisdomLei/wmux?color=2ea44f&label=release)](https://github.com/wisdomLei/wmux/releases)
+[![Downloads](https://img.shields.io/github/downloads/wisdomLei/wmux/total?color=blue&label=downloads)](https://github.com/wisdomLei/wmux/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-[**Download**](https://github.com/openwong2kim/wmux/releases/latest) · [**Website**](https://www.wmux.app) · [**Docs**](docs/README.md) · [**iOS app**](https://apps.apple.com/app/wmux-workspace-for-ai-agents/id6797904556)
+[**Download this fork**](https://github.com/wisdomLei/wmux/releases) · [**Upstream project**](https://github.com/openwong2kim/wmux) · [**Docs**](docs/README.md) · [**iOS app**](https://apps.apple.com/app/wmux-workspace-for-ai-agents/id6797904556)
 
 <a href="https://www.wmux.app"><img alt="Multi Task splits one prompt into two tasks, Strip accents and Usage section, and Claude Code works in each task's own worktree; the task that asks a question shows under Needs you in Fleet and is answered there; both reach Ready to review, hunks from two files are adopted and node --test passes" src="docs/readme/hero.gif" width="900" /></a>
 
 <sub>Run tasks in parallel → answer the one that asks → review and adopt. Recorded on wmux 4.6.1 with real Claude Code on a sample repo; waits are cut and the rest is sped up.</sub>
 
 </div>
+
+> **Unofficial fork.** This repository is an independent, unofficial fork of
+> [wmux](https://github.com/openwong2kim/wmux), created and maintained by
+> **alei wisdom** ([@wisdomLei](https://github.com/wisdomLei)). It is not
+> affiliated with, endorsed by, or supported by the original author. The
+> upstream project is MIT-licensed and its copyright notice and license are
+> preserved in [LICENSE](LICENSE). See [FORK.md](FORK.md) for the upstream
+> baseline, the changes this fork carries, and how its releases work.
 
 wmux is a desktop app where your AI agents work side by side, each in its own pane, while a background daemon on your own machine keeps every session alive. What sets it apart:
 
@@ -34,21 +42,22 @@ wmux is a desktop app where your AI agents work side by side, each in its own pa
 
 ## Install
 
-**Windows** — a package manager skips the SmartScreen prompt:
+This fork builds **Windows x64** installers only. Download the newest
+`wmux-<version>.Setup.exe` from [this fork's Releases page](https://github.com/wisdomLei/wmux/releases)
+and run it. The build is not code-signed, so SmartScreen shows an unknown
+publisher; click **More info → Run anyway**. Shut wmux down completely before
+installing over an existing copy (see the FAQ below).
 
-```powershell
-winget install openwong2kim.wmux    # or: choco install wmux
-```
+<sub>There is no winget or Chocolatey package for this fork. `winget install
+openwong2kim.wmux` and `choco install wmux` install the **upstream** build from
+the original author, not this one. This fork also does not run the in-app
+updater: check its Releases page for new builds.</sub>
 
-<sub>Offline? [Download Setup.exe](https://github.com/openwong2kim/wmux/releases/latest). It is signed with a SignPath *test* certificate for now, so SmartScreen shows an unknown publisher ([why?](#install-help)).</sub>
-
-**macOS** (Apple Silicon, macOS 13 Ventura or later) — [download the .dmg](https://github.com/openwong2kim/wmux/releases/latest) and drag wmux to Applications. It is Developer ID signed and notarized; on first launch the `wmux` CLI installs itself onto your PATH.
-
-**iPhone** — [wmux for iOS on the App Store](https://apps.apple.com/app/wmux-workspace-for-ai-agents/id6797904556) (free). In wmux, open **Remote** on the rail, choose **Pair a phone…**, press **Pair**, and scan the QR code with the app.
-
-**Linux** — experimental AppImage / .deb / .rpm builds are on the [releases page](https://github.com/openwong2kim/wmux/releases/latest).
-
-<sub>Windows x64 and macOS arm64 update themselves: wmux checks for a release every 30 minutes and verifies it against a published SHA-256 before installing.</sub>
+**macOS, iPhone and Linux** builds are not produced by this fork. Use the
+[upstream releases](https://github.com/openwong2kim/wmux/releases) and the
+[iOS app](https://apps.apple.com/app/wmux-workspace-for-ai-agents/id6797904556)
+for those platforms; the desktop source here is the same upstream code with
+the changes listed in [FORK.md](FORK.md).
 
 ## Features
 
@@ -164,28 +173,25 @@ When Claude Code or Codex hits its usage limit, the pane pauses: its header and 
 - **Which Macs are supported?** Apple Silicon (arm64) on macOS 13 (Ventura) or later. From 4.14 on, a Mac on macOS 12 is not offered updates and keeps the version it has. wmux 4.13 and earlier do not check, so on macOS 12 turn off automatic updates in wmux (or update macOS) before 4.14 arrives. The `.dmg` is Developer ID signed, notarized and stapled. Intel builds aren't produced right now; open an issue if you need one.
 - **Can I reach my panes without the iPhone app?** Yes: `wmux web` serves your live panes to any browser. It is read-only and loopback-only by default; input and network exposure are explicit opt-ins. Even read-only shows a pane's full scrollback to whoever can reach the port, so do not publish it to the open internet. See [remote workspaces](docs/how-to/remote-workspaces.md) and [the phone client contract](docs/phone-client-contract.md).
 - **Feels heavy, or a workspace switch is slow?** See [docs/performance.md](docs/performance.md).
-- **"Windows protected your PC" warning?** The release pipeline signs `Setup.exe` through [SignPath](https://signpath.io/), but with a *test* certificate while the [SignPath Foundation](https://signpath.org/) OSS certificate is pending — Windows does not trust it, so SmartScreen still reports an unknown publisher. Click **More info → Run anyway**, or install via **winget** / **Chocolatey** to skip the prompt.
+- **"Windows protected your PC" warning?** This fork's `Setup.exe` is not code-signed, so SmartScreen reports an unknown publisher. Click **More info → Run anyway**. Code signing is part of the upstream release pipeline this fork does not use.
 - **Installing or updating by hand with Setup.exe?** First shut wmux down completely: right-click the tray icon → **Shut down wmux (close all sessions)**. Plain *Quit* keeps the session daemon running, and Setup.exe cannot replace a running wmux: it fails with "Failed to remove existing directory". If that already happened, wait a few seconds for wmux to exit, then run Setup.exe again. The in-app updater handles all of this for you.
-- **Installer blocked with no "Run anyway"?** **Smart App Control (SAC)** on Windows 11 can block unsigned binaries outright. Check with `Get-MpComputerStatus | Select-Object SmartAppControlState`. SAC uses cloud reputation, so blocks are often transient — retry later, use winget/choco, or build from source ([#200](https://github.com/openwong2kim/wmux/issues/200)).
+- **Installer blocked with no "Run anyway"?** **Smart App Control (SAC)** on Windows 11 can block unsigned binaries outright. Check with `Get-MpComputerStatus | Select-Object SmartAppControlState`. SAC uses cloud reputation, so blocks are often transient — retry later, download the Setup.exe again from this fork's Releases page, or build from source ([#200](https://github.com/openwong2kim/wmux/issues/200)).
 
-**PowerShell one-liner** (downloads the prebuilt Setup.exe, verifies SHA-256, no build tools):
-```powershell
-irm https://raw.githubusercontent.com/openwong2kim/wmux/main/install.ps1 | iex
-```
+**Download** the current `Setup.exe` from [this fork's Releases page](https://github.com/wisdomLei/wmux/releases). The `install.ps1` one-liner that fetches the *latest stable* release is kept for the upstream project; this fork currently publishes a prerelease, which `releases/latest` does not serve.
 
 </details>
 
 ## Build from source
 
 ```powershell
-git clone https://github.com/openwong2kim/wmux.git
+git clone https://github.com/wisdomLei/wmux.git
 cd wmux
 npm install
 npm start          # dev mode
 npm run make       # build installer
 ```
 
-Requires Node 18+ and Python 3.x, plus a native toolchain: VS Build Tools (C++ workload) on Windows — `WMUX_FROM_SOURCE=1 irm …/install.ps1 | iex` auto-installs them — or the Xcode Command Line Tools on macOS (`xcode-select --install`).
+Requires Node 18+ and Python 3.x, plus a native toolchain: VS Build Tools (C++ workload) on Windows — `WMUX_FROM_SOURCE=1 irm https://raw.githubusercontent.com/wisdomLei/wmux/main/install.ps1 | iex` auto-installs them — or the Xcode Command Line Tools on macOS (`xcode-select --install`).
 
 ## Contributors
 
@@ -195,13 +201,15 @@ wmux is built in the open. Thanks to everyone who has shipped code, squashed bug
 
 Community shout-outs to [@snowyukitty](https://github.com/snowyukitty), [@matdac6](https://github.com/matdac6), [@margvez](https://github.com/margvez), [@zer0ken](https://github.com/zer0ken), [@AnandSundar](https://github.com/AnandSundar), [@cloim](https://github.com/cloim), [@cheyras](https://github.com/cheyras), [@junbeom09](https://github.com/junbeom09), [@rayss868](https://github.com/rayss868), [@dev-minggyu](https://github.com/dev-minggyu), and [@alphabeen](https://github.com/alphabeen).
 
+The changes listed in [FORK.md](FORK.md) are maintained by alei wisdom. Upstream development, issues and translations live in the [original repository](https://github.com/openwong2kim/wmux).
+
 **New here?** Grab a [good first issue](https://github.com/openwong2kim/wmux/labels/good%20first%20issue), help translate a locale, or read [CONTRIBUTING.md](CONTRIBUTING.md). PRs welcome. Built on [xterm.js](https://xtermjs.org/), [node-pty](https://github.com/microsoft/node-pty), [Electron](https://www.electronjs.org/), and [Playwright](https://playwright.dev/).
 
 > wmux runs the agent CLIs you install and sign in to yourself. You are responsible for complying with your AI provider's Terms of Service.
 
 ## License
 
-The source code is [MIT](LICENSE). The Mochi crew bot characters are not: they are all rights reserved, see [ASSETS-LICENSE.md](ASSETS-LICENSE.md).
+The source code is [MIT](LICENSE). Copyright (c) 2025 openwong2kim; modifications in this fork copyright (c) 2026 alei wisdom. The Mochi crew bot characters are not: they are all rights reserved, see [ASSETS-LICENSE.md](ASSETS-LICENSE.md).
 
 <sub>**Keywords:** ADE · agent development environment · AI agent automation · workspace multiplexer · AI coding agent workspace · agent fleet · multi-agent terminal · git worktree fan-out · Claude Code · Codex CLI · Gemini CLI · iOS approval app · MCP server · Chrome DevTools Protocol · browser automation · split terminal · Windows terminal multiplexer · macOS terminal multiplexer · ConPTY · xterm.js · Electron terminal · tmux for Windows</sub>
 

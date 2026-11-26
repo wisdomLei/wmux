@@ -57,7 +57,9 @@ import {
 } from './verifyFailureStore';
 import { assessSmartAppControlBlock } from './smartAppControl';
 
-const REPO = 'openwong2kim/wmux';
+// This is alei wisdom's independent fork; the in-app updater follows the
+// fork's own releases, never the upstream author's.
+const REPO = 'wisdomLei/wmux';
 // update.electronjs.org keys releases by platform-arch. Only the two arches we
 // actually publish installers for are ever requested (see isUpdaterSupported).
 const isDarwin = process.platform === 'darwin';
@@ -980,6 +982,10 @@ export class AutoUpdater {
     const { statusCode, text } = await this.requestText(UPDATE_SERVER, 'update server');
     // 204 = no update available
     if (statusCode === 204) return null;
+    // This fork publishes prereleases, which update.electronjs.org never
+    // serves; its answer is then 404 rather than 204. That is "nothing to
+    // install here", not a failure worth reporting on every background poll.
+    if (statusCode === 404) return null;
     if (statusCode !== 200) throw new Error(`Update server returned ${statusCode}`);
     let data: unknown;
     try {

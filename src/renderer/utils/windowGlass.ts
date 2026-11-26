@@ -152,6 +152,7 @@ function sync(
   last: SyncState,
   onAppearance?: (appearance: 'dark' | 'light') => void,
   onGlassLevel?: (level: WindowGlassLevel) => void,
+  followSystem?: () => boolean,
 ): void {
   const style = getComputedStyle(root);
   const platform = window.electronAPI?.platform;
@@ -172,8 +173,10 @@ function sync(
   const level: WindowGlassLevel = win32 && !coverage ? 'off' : chosen;
   // With glass off the app goes back to the system appearance: overriding it
   // is app-wide (native menus, the in-app browser's prefers-color-scheme),
-  // so it is only worth it while the material shows.
-  const wanted = level === 'off' ? 'system' : appearance;
+  // so it is only worth it while the material shows. Follow-system mode also
+  // keeps it on 'system': the OS appearance is the input that picks the
+  // theme, so overriding it would hide every later OS change from the page.
+  const wanted = level === 'off' || followSystem?.() ? 'system' : appearance;
   if (supported && wanted && wanted !== last.appearance) {
     last.appearance = wanted;
     window.electronAPI?.window?.setAppearance?.(wanted);
@@ -200,16 +203,19 @@ function sync(
  * Keep `data-glass` and the app's appearance in step with the theme, the glass
  * level and the appearance. `onAppearance` hears the theme's polarity on every
  * sync, and `onGlassLevel` each level sent to main on Windows ('off' while the
- * theme blocks glass), both for the session save.
+ * theme blocks glass), both for the session save. `followSystem` reports
+ * whether the theme follows the OS appearance; while it does, main keeps the
+ * app's appearance on 'system' so the page keeps hearing the OS.
  */
 export function installWindowGlass(
   root: HTMLElement = document.documentElement,
   onAppearance?: (appearance: 'dark' | 'light') => void,
   onGlassLevel?: (level: WindowGlassLevel) => void,
+  followSystem?: () => boolean,
 ): () => void {
   const scheme = window.matchMedia?.('(prefers-color-scheme: dark)');
   const last: SyncState = { appearance: null, level: null, coverage: null };
-  const run = () => sync(root, scheme ? scheme.matches : true, last, onAppearance, onGlassLevel);
+  const run = () => sync(root, scheme ? scheme.matches : true, last, onAppearance, onGlassLevel, followSystem);
   run();
   const observer = new MutationObserver(run);
   observer.observe(root, { attributes: true, attributeFilter: ['data-theme', 'style', 'data-glass-level'] });

@@ -77,6 +77,7 @@ async function optionsFor(
   windowGlass: unknown,
   windowAppearance?: unknown,
   windowGlassEffective?: unknown,
+  themeMode?: unknown,
 ) {
   Object.defineProperty(process, 'platform', { value: platform, configurable: true });
   h.release = release;
@@ -87,7 +88,7 @@ async function optionsFor(
   vi.resetModules();
   const { createWindow } = await import('../createWindow');
   const { isWindowGlassOn } = await import('../windowGlass');
-  const win = createWindow({ deferLoad: true, windowGlass, windowGlassEffective, windowAppearance });
+  const win = createWindow({ deferLoad: true, windowGlass, windowGlassEffective, windowAppearance, themeMode });
   // The appearance as the window was built: what DWM tints the first frames with.
   return { opts: h.options[0], glassOn: isWindowGlassOn(win), themeSource: h.themeAtConstruction[0], win: h.windows[0] };
 }
@@ -201,6 +202,16 @@ describe('createWindow app appearance before a glass window exists', () => {
   it('keeps the system appearance when the window starts opaque', async () => {
     expect((await optionsFor('win32', '10.0.26200', 'off', 'dark')).themeSource).toBe('system');
     expect((await optionsFor('win32', '10.0.19045', 'soft', 'dark')).themeSource).toBe('system');
+  });
+
+  // Follow-system themes: prefers-color-scheme is how the page hears the OS
+  // appearance, and themeSource drives it — so launch must not pin it to the
+  // saved theme's polarity, or the OS signal would freeze from the first frame.
+  it('keeps the system appearance from launch while the theme follows the system', async () => {
+    expect((await optionsFor('win32', '10.0.26200', 'soft', 'dark', undefined, 'system')).themeSource).toBe('system');
+    expect((await optionsFor('win32', '10.0.26200', 'soft', 'light', undefined, 'system')).themeSource).toBe('system');
+    // A fixed theme still starts in its saved polarity.
+    expect((await optionsFor('win32', '10.0.26200', 'soft', 'dark', undefined, 'fixed')).themeSource).toBe('dark');
   });
 
   it('leaves macOS and Linux to the renderer', async () => {

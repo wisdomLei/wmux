@@ -356,6 +356,23 @@ export class SessionManager {
   }
 
   /**
+   * How the renderer's theme was chosen ('fixed' | 'system'), read before the
+   * window exists: in 'system' mode main must not pin the app's appearance to
+   * the saved theme, or the page would stop hearing the OS appearance change
+   * that picks the theme (createWindow.ts). Raw value; the caller whitelists
+   * it. Null when none could be read.
+   */
+  readThemeMode(): unknown {
+    try {
+      return atomicReadJSONSync<SessionData>(this.filePath, {
+        validate: SessionManager.isSessionData,
+      })?.themeMode ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
    * The persisted per-site memory toggle, as a targeted read.
    *
    * Same shape and same reasoning as readAutoUpdateEnabled: the browser RPC

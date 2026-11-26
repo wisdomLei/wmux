@@ -1,15 +1,24 @@
 /**
  * Parser hooks the browser build (wmux web) installs on every terminal it
- * mounts. The browser is a VIEWER of a pane another machine owns:
+ * mounts. The browser is a VIEWER of a pane another machine may own:
  *
  *  - Terminal queries (DA1/DA2/DA3, DSR/CPR, DECRQM, XTVERSION, DECRQSS, OSC
- *    color queries) are absorbed, so this xterm never answers them. The pane's
- *    owner (the desktop's terminal) answers; a second answer from the browser
- *    arrived in the shell as junk (`^[[?1;2c` on the prompt). With no desktop
- *    attached the query goes unanswered — apps that ask fall back on their own
- *    timeout, which is the safe failure: a viewer that answers can type into a
- *    shell, a viewer that stays quiet cannot. Replayed queries are absorbed the
- *    same way, which is what keeps a snapshot from typing anything.
+ *    color queries) are absorbed while the pane's owner (the desktop's
+ *    terminal) answers, or while this viewer may not type. A second answer
+ *    arriving from the browser reaches the shell as junk (`^[[?1;2c` on the
+ *    prompt), and a viewer that stays quiet cannot type into a shell. Replayed
+ *    queries are absorbed the same way, which is what keeps a snapshot from
+ *    typing anything.
+ *  - The exception is a LIVE query on a pane NO desktop is showing while this
+ *    viewer has the input grant (`answerQueries`). There the browser is the
+ *    only terminal attached: absorbing leaves a query-driven line editor
+ *    (PSReadLine asks for the cursor position before every prompt) waiting
+ *    out its retry timeout, which stalls echo and can spill a "terminal size
+ *    too small" banner. Answering is safe there because this caller can
+ *    already type. A REPLAYED query is still absorbed — it was answered when
+ *    it was live, and answering it again sends the report into the shell as
+ *    typing (the `[?1;2c` junk on the prompt). The caller decides which is
+ *    which; this file only asks its predicate per query.
  *  - While this viewer may not type, mouse-tracking modes are absorbed too: the
  *    reports would go nowhere, and with them armed a drag selects nothing and
  *    the "app is using the mouse" hint offers a key that does nothing.
@@ -26,6 +35,14 @@ type ParserTerminal = Pick<Terminal, 'parser'>;
 export interface ViewerParserOptions {
   /** False while this viewer may not type (read-only device or server). */
   mayInput: () => boolean;
+  /**
+   * True only for a live query when this terminal is the pane's sole answerer:
+   * the desktop is not showing it, this caller holds the input grant, and no
+   * stored bytes are parsing. Evaluated per query, so a pane handed between
+   * desk and phone changes behaviour without a remount. Defaults to never
+   * answering.
+   */
+  answerQueries?: () => boolean;
 }
 
 const installed = new WeakSet<object>();
@@ -33,7 +50,9 @@ const installed = new WeakSet<object>();
 export function installViewerParser(term: ParserTerminal, opts: ViewerParserOptions): IDisposable[] {
   if (installed.has(term)) return [];
   installed.add(term);
-  const absorb = () => true;
+  // Absorbed → true (xterm never answers). When this viewer is the answerer,
+  // returning false lets xterm's own query handlers emit the report.
+  const absorb = () => !opts.answerQueries?.();
   const p = term.parser;
   const out: IDisposable[] = [
     p.registerCsiHandler({ final: 'c' }, absorb), // DA1
@@ -48,7 +67,7 @@ export function installViewerParser(term: ParserTerminal, opts: ViewerParserOpti
   ];
   // OSC 4 / 10 / 11 / 12: a `?` spec is a query; setting a colour still applies.
   for (const ident of [4, 10, 11, 12]) {
-    out.push(p.registerOscHandler(ident, (data) => data.includes('?')));
+    out.push(p.registerOscHandler(ident, (data) => data.includes('?') && absorb()));
   }
   const mouseOnly = (params: (number | number[])[]) =>
     params.length > 0 && params.every((v) => typeof v === 'number' && MOUSE_MODES.has(v));

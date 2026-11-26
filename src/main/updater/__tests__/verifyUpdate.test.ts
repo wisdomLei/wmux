@@ -21,7 +21,7 @@ const validManifest = (over: Record<string, unknown> = {}) => ({
   version: '2.14.1',
   setupExe: 'wmux-2.14.1.Setup.exe',
   sha256: VALID_SHA,
-  url: 'https://github.com/openwong2kim/wmux/releases/download/v2.14.1/wmux-2.14.1.Setup.exe',
+  url: 'https://github.com/wisdomLei/wmux/releases/download/v2.14.1/wmux-2.14.1.Setup.exe',
   ...over,
 });
 

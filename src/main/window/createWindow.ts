@@ -188,7 +188,7 @@ function attachWindowStatePersistence(win: BrowserWindow): void {
 }
 
 export function createWindow(
-  opts: { deferLoad?: boolean; windowGlass?: unknown; windowGlassEffective?: unknown; windowAppearance?: unknown; locale?: unknown } = {},
+  opts: { deferLoad?: boolean; windowGlass?: unknown; windowGlassEffective?: unknown; windowAppearance?: unknown; themeMode?: unknown; locale?: unknown } = {},
 ): BrowserWindow {
   // Windows window glass (windowGlass.ts): acrylic on Windows 11 22H2+ unless
   // the persisted level is Off or the window was last shown opaque for its
@@ -198,9 +198,16 @@ export function createWindow(
     opts.windowGlass,
     opts.windowGlassEffective,
   );
+  // Follow-system themes read the OS appearance through prefers-color-scheme,
+  // which nativeTheme.themeSource drives: while the user follows the system,
+  // the appearance stays on 'system' so the page keeps hearing the OS. Pinning
+  // it to the saved theme's polarity here would freeze that signal at launch.
+  const followSystemTheme = opts.themeMode === 'system';
   // The acrylic's tone follows the app appearance; set it before the window
   // exists, not when the renderer loads, so the first frames match the theme.
-  const bootAppearance = process.platform === 'win32' ? initialWindowsAppearance(winGlass, opts.windowAppearance) : null;
+  const bootAppearance = process.platform === 'win32'
+    ? (followSystemTheme ? 'system' : initialWindowsAppearance(winGlass, opts.windowAppearance))
+    : null;
   if (bootAppearance) nativeTheme.themeSource = bootAppearance;
   // The saved theme's polarity, for what the window paints before the
   // renderer applies the theme (shared/windowStartPaint.ts).

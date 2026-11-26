@@ -91,6 +91,11 @@ export default defineConfig({
   root,
   base: '/app/',
   plugins: [webStubs(), react()],
+  resolve: {
+    // The WebGL renderer blanked the pane in the browser build (phone widths
+    // and every DPR > 1); the DOM renderer paints reliably. See the stand-in.
+    alias: { '@xterm/addon-webgl': r('src/renderer/web/stubs/webglAddon.ts') },
+  },
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),
     // The browser has no Node `process`; React and zustand read NODE_ENV.

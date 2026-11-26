@@ -920,6 +920,13 @@ export interface SessionData {
   channelDockVisible?: boolean;
   // User preferences (persisted across restarts)
   theme?: string;
+  /** How `theme` was chosen: 'fixed' = the picked theme, 'system' = the light
+   *  or dark slot follows the OS appearance. Absent = fixed (pre-follow-system
+   *  sessions). */
+  themeMode?: 'fixed' | 'system';
+  /** The themes `system` mode shows while the OS prefers light / dark. */
+  lightTheme?: string;
+  darkTheme?: string;
   locale?: string;
   terminalFontSize?: number;
   /** Whole-interface zoom multiplier (1 = 100%). Absent = no zoom. */

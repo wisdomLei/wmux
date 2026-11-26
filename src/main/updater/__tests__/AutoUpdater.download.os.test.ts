@@ -9,7 +9,7 @@ import { IPC } from '../../../shared/constants';
 
 const FAKE_VERSION = '9.9.9';
 const NEW_VERSION = '9.9.10';
-const DL_URL = `https://github.com/openwong2kim/wmux/releases/download/v${NEW_VERSION}/wmux-${NEW_VERSION}.Setup.exe`;
+const DL_URL = `https://github.com/wisdomLei/wmux/releases/download/v${NEW_VERSION}/wmux-${NEW_VERSION}.Setup.exe`;
 const INSTALLER_BODY = Buffer.from('FAKE-INSTALLER-BYTES');
 const GOOD_SHA = createHash('sha256').update(INSTALLER_BODY).digest('hex');
 

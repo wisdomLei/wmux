@@ -147,6 +147,7 @@ export const SETTINGS_CATALOG: SettingsCatalogEntry[] = [
   { id: 'imagepaste', tab: 'terminal', labelKey: 'settings.imagePaste', descKey: 'settings.imagePasteDesc', synonyms: 'image paste screenshot clipboard png inline native wsl 이미지 붙여넣기 스크린샷 클립보드' },
 
   { id: 'theme', tab: 'appearance', labelKey: 'settings.theme', synonyms: 'color colour dark light palette 테마' },
+  { id: 'theme-follow-system', tab: 'appearance', labelKey: 'settings.theme.followSystem', descKey: 'settings.theme.followSystemDesc', synonyms: 'follow system auto appearance auto dark light switch 跟随系统 自动 浅色 深色 자동' },
   { id: 'windowglass', tab: 'appearance', labelKey: 'settings.windowGlass', descKey: 'settings.windowGlassDesc', synonyms: 'transparent translucent transparency vibrancy acrylic blur glass opacity 투명 반투명 투명도 유리 블러', platform: ['darwin', 'win32'] },
   { id: 'chrome', tab: 'appearance', labelKey: 'settings.chromePreset', descKey: 'settings.chromePresetDesc', synonyms: 'density compact comfortable' },
   { id: 'sidebarpos', tab: 'appearance', labelKey: 'settings.sidebarPosition', descKey: 'settings.sidebarPositionDesc', synonyms: 'sidebar left right dock' },

@@ -18,23 +18,17 @@ import { WorkspaceViewport } from '../components/Layout/WorkspaceViewport';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { getLeafPanes } from '../../shared/paneUtils';
 import { FOCUS_RING } from '../components/focusRing';
-import { IconPlus } from '../components/icons';
+import { IconPlus, IconSidebar } from '../components/icons';
 import { useT } from '../hooks/useT';
 import { useWebInputState, webPtyHub } from './WebTerminal';
+import MobileKeyBar from './MobileKeyBar';
+import ApprovalCenter from './ApprovalCenter';
 import { newTerminalTarget, type NewTerminalTarget } from './webPty';
 import { desktopOwnsLayout, subscribeDesktopLayout } from './webSync';
+import { PHONE_QUERY, useNarrow } from './responsive';
+import { useWebViewportHeight } from './viewport';
 
-export const PHONE_QUERY = '(max-width: 640px)';
-
-function subscribeNarrow(cb: () => void): () => void {
-  const mq = window.matchMedia(PHONE_QUERY);
-  mq.addEventListener('change', cb);
-  return () => mq.removeEventListener('change', cb);
-}
-
-export function useNarrow(): boolean {
-  return useSyncExternalStore(subscribeNarrow, () => window.matchMedia(PHONE_QUERY).matches);
-}
+export { PHONE_QUERY, useNarrow };
 
 /** Phone only: which pane of the active workspace is shown. */
 function PanePicker() {
@@ -88,6 +82,45 @@ function InputStateChip() {
     >
       {state === 'read-only' ? t('web.appReadOnly') : t('web.inputChecking')}
     </div>
+  );
+}
+
+/**
+ * The phone's top bar. It replaces the desktop rail: the drawer opens the
+ * full sidebar, and the title names the workspace and the pane on screen so
+ * the terminal is never the only thing telling you where you are.
+ */
+function MobileTopBar({ inputState, onMenu }: { inputState: 'checking' | 'allowed' | 'read-only'; onMenu: () => void }) {
+  const t = useT();
+  const wsName = useStore((s) => s.workspaces.find((w) => w.id === s.activeWorkspaceId)?.name ?? '');
+  const paneTitle = useStore((s) => {
+    const ws = s.workspaces.find((w) => w.id === s.activeWorkspaceId);
+    if (!ws) return '';
+    const leaf = getLeafPanes(ws.rootPane).find((l) => l.id === ws.activePaneId);
+    const surface = leaf?.surfaces.find((x) => x.id === leaf.activeSurfaceId) ?? leaf?.surfaces[0];
+    return surface?.title ?? '';
+  });
+  return (
+    <header className="web-mobile-bar" data-web-mobile-bar>
+      <button
+        type="button"
+        className={`web-mobile-bar-menu ${FOCUS_RING}`}
+        aria-label={t('web.openSidebar')}
+        onClick={onMenu}
+        data-web-open-sidebar
+      >
+        <IconSidebar size={18} />
+      </button>
+      <div className="web-mobile-bar-title">
+        <div className="web-mobile-bar-ws" data-web-bar-workspace>{wsName || t('sidebar.workspaces')}</div>
+        {paneTitle && <div className="web-mobile-bar-pane" data-web-bar-pane>{paneTitle}</div>}
+      </div>
+      {inputState !== 'allowed' && (
+        <span className="web-mobile-bar-state" data-web-bar-input-state={inputState}>
+          {inputState === 'read-only' ? t('web.appReadOnly') : t('web.inputChecking')}
+        </span>
+      )}
+    </header>
   );
 }
 
@@ -229,12 +262,21 @@ function EmptyState() {
 }
 
 export function WebApp() {
+  const t = useT();
   const narrow = useNarrow();
   const hasWorkspaces = useStore((s) => s.workspaces.length > 0);
   const paneGateReady = useStore((s) => s.paneGate === 'ready');
   const sidebarVisible = useStore((s) => s.sidebarVisible);
   const activeWorkspaceId = useStore((s) => s.activeWorkspaceId);
   const activePaneId = useStore((s) => s.workspaces.find((w) => w.id === s.activeWorkspaceId)?.activePaneId ?? null);
+  const activePtyId = useStore((s) => {
+    const ws = s.workspaces.find((w) => w.id === s.activeWorkspaceId);
+    if (!ws) return '';
+    const leaf = getLeafPanes(ws.rootPane).find((l) => l.id === ws.activePaneId);
+    const surface = leaf?.surfaces.find((x) => x.id === leaf.activeSurfaceId) ?? leaf?.surfaces[0];
+    return surface?.ptyId ?? '';
+  });
+  const inputState = useWebInputState();
 
   // Phone: one pane at a time, through the app's own zoom.
   useEffect(() => {
@@ -246,24 +288,58 @@ export function WebApp() {
     if (narrow) useStore.getState().setSidebarVisible(false);
   }, [narrow, activeWorkspaceId]);
 
+  // Escape closes the drawer, unless a dialog above it already took the key.
+  useEffect(() => {
+    if (!narrow || !sidebarVisible) return undefined;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || e.defaultPrevented || e.isComposing) return;
+      e.preventDefault();
+      useStore.getState().setSidebarVisible(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [narrow, sidebarVisible]);
+
+  useWebViewportHeight(narrow);
+
+  // The key bar belongs to a pane this caller may type into. Read-only pages
+  // keep the top bar's "Read-only" badge instead.
+  const showKeybar = narrow && inputState === 'allowed' && activePtyId !== '';
+
   return (
     <ErrorBoundary name="WebApp">
-      <div className="flex flex-col h-screen w-screen bg-[var(--bg-base)] overflow-hidden" data-web-app>
+      <div className="flex flex-col bg-[var(--bg-base)] overflow-hidden" data-web-app data-web-narrow={narrow ? 'true' : undefined}>
+        {narrow && (
+          <MobileTopBar
+            inputState={inputState}
+            onMenu={() => useStore.getState().setSidebarVisible(!sidebarVisible)}
+          />
+        )}
         <div className="wmux-shell-body relative flex flex-1 min-h-0">
-          <ErrorBoundary name="Sidebar">
-            {narrow ? <MiniSidebar /> : sidebarVisible ? <Sidebar /> : <MiniSidebar />}
-          </ErrorBoundary>
+          {!narrow && (
+            <ErrorBoundary name="Sidebar">
+              {sidebarVisible ? <Sidebar /> : <MiniSidebar />}
+            </ErrorBoundary>
+          )}
           {narrow && sidebarVisible && (
-            <div className="absolute inset-0 flex" style={{ zIndex: 'var(--z-overlay)' as unknown as number }} data-web-drawer>
-              <ErrorBoundary name="SidebarDrawer">
-                <Sidebar />
-              </ErrorBoundary>
+            <div className="web-drawer" data-web-drawer>
+              <div
+                className="web-drawer-panel"
+                role="dialog"
+                aria-modal="true"
+                aria-label={t('sidebar.workspaces')}
+                data-web-drawer-panel
+              >
+                <ErrorBoundary name="SidebarDrawer">
+                  <Sidebar />
+                </ErrorBoundary>
+              </div>
               <button
                 type="button"
-                className="flex-1"
-                style={{ background: 'rgba(0,0,0,0.45)' }}
-                aria-label="Close sidebar"
+                className="web-drawer-backdrop"
+                aria-label={t('web.closeSidebar')}
                 onClick={() => useStore.getState().setSidebarVisible(false)}
+                data-web-drawer-backdrop
               />
             </div>
           )}
@@ -277,11 +353,15 @@ export function WebApp() {
                 {/* Until the first poll answers, "no workspaces" is not known yet. */}
                 {paneGateReady && !hasWorkspaces && <EmptyState />}
                 {hasWorkspaces && <NewTerminalButton variant="icon" />}
-                <InputStateChip />
+                {/* The phone's top bar carries the same state; the floating
+                    chip would sit under the key bar. */}
+                {!narrow && <InputStateChip />}
               </div>
             </div>
           </ErrorBoundary>
         </div>
+        <ApprovalCenter />
+        {showKeybar && <MobileKeyBar ptyId={activePtyId} />}
       </div>
     </ErrorBoundary>
   );

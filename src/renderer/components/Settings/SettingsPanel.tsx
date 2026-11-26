@@ -3924,21 +3924,33 @@ function TabAppearance() {
 
   const currentTheme = useStore((s) => s.theme);
   const setTheme = useStore((s) => s.setTheme);
+  // Follow-system mode (2026-11-25): two theme slots the app switches between
+  // as the OS does; picking a card below leaves the mode.
+  const themeMode = useStore((s) => s.themeMode);
+  const setThemeMode = useStore((s) => s.setThemeMode);
+  const lightTheme = useStore((s) => s.lightTheme);
+  const darkTheme = useStore((s) => s.darkTheme);
+  const setLightTheme = useStore((s) => s.setLightTheme);
+  const setDarkTheme = useStore((s) => s.setDarkTheme);
   // Live custom-theme colors drive the `custom` card's thumbnail so it always
   // reflects the user's real palette (not a frozen snapshot). Null before the
   // user has ever customized → fall back to the default custom theme.
   const customThemeColors = useStore((s) => s.customThemeColors) ?? DEFAULT_CUSTOM_THEME;
+
+  const themePalette = (value: string): FullCssPalette => value === 'custom'
+    ? deriveFullPalette(customThemeColors)
+    : deriveBuiltinPalette(value as BuiltinThemeId);
 
   // wmux's own looks (the ones with a THEME_STYLES entry) lead the grid; every
   // other built-in theme and Custom follow under a second heading, each group
   // in THEME_OPTIONS order.
   const lookOptions = THEME_OPTIONS.filter(({ value }) => value in THEME_STYLES);
   const moreOptions = THEME_OPTIONS.filter(({ value }) => !(value in THEME_STYLES));
+  const slotOptions = THEME_OPTIONS.filter(({ value }) => value !== 'custom');
   const renderThemeCard = ({ value, label }: (typeof THEME_OPTIONS)[number]) => {
-    const selected = currentTheme === value;
-    const palette = value === 'custom'
-      ? deriveFullPalette(customThemeColors)
-      : deriveBuiltinPalette(value as BuiltinThemeId);
+    // In follow-system mode no single look is chosen — the system card is.
+    const selected = themeMode !== 'system' && currentTheme === value;
+    const palette = themePalette(value);
     return (
       <button
         key={value}
@@ -3969,6 +3981,10 @@ function TabAppearance() {
     );
   };
 
+  const followSelected = themeMode === 'system';
+  // The system card's footer paints in the theme on screen now, like any look.
+  const followPalette = themePalette(THEME_OPTIONS.some(({ value }) => value === currentTheme) ? currentTheme : 'tint');
+
   return (
     <div className="settings-page">
       {/* Theme — visual cards on the surface radii and hairlines. Selection is
@@ -3979,6 +3995,41 @@ function TabAppearance() {
         </div>
         <div className="flex flex-col gap-3" role="radiogroup" aria-label={t('settings.theme')}>
           <div className="grid grid-cols-3 gap-3" data-theme-group="looks">
+            {/* Follow-system leads the grid: it is a way of choosing a look,
+                drawn as the two themes it switches between. */}
+            <button
+              type="button"
+              onClick={() => setThemeMode('system')}
+              role="radio"
+              aria-checked={followSelected}
+              aria-label={t('settings.theme.followSystem')}
+              title={t('settings.theme.followSystemDesc')}
+              data-setting-id="theme-follow-system"
+              className={`settings-theme-card scroll-mt-4 ${FOCUS_RING}`}
+            >
+              <div className="w-full flex" style={{ height: 64 }} aria-hidden="true">
+                <div className="w-1/2 min-w-0 overflow-hidden">
+                  <ThemeThumbnail palette={themePalette(lightTheme)} look={THEME_STYLES[lightTheme as BuiltinThemeId]} />
+                </div>
+                <div className="w-1/2 min-w-0 overflow-hidden">
+                  <ThemeThumbnail palette={themePalette(darkTheme)} look={THEME_STYLES[darkTheme as BuiltinThemeId]} />
+                </div>
+              </div>
+              <div
+                className="flex items-center justify-between gap-1 px-2.5 py-1.5"
+                style={{
+                  backgroundColor: followPalette.bgMantle,
+                  color: followSelected ? followPalette.textMain : followPalette.textSub,
+                }}
+              >
+                <span className="text-[13px] truncate">{t('settings.theme.followSystem')}</span>
+                {followSelected && (
+                  <span className="shrink-0 inline-flex" style={{ color: followPalette.textMain }} aria-hidden="true">
+                    <IconCheck size={12} />
+                  </span>
+                )}
+              </div>
+            </button>
             {lookOptions.map(renderThemeCard)}
           </div>
           <h4 className="ui-group-label settings-section-title settings-theme-more">{t('settings.theme.more')}</h4>
@@ -3986,6 +4037,28 @@ function TabAppearance() {
             {moreOptions.map(renderThemeCard)}
           </div>
         </div>
+        {/* The pair follow-system switches between. Shown only in that mode:
+            the cards above are a different way of choosing. */}
+        {followSelected && (
+          <div className="ui-group mt-3" data-theme-group="follow-system-slots">
+            <SettingRow id="theme-light-slot" label={t('settings.theme.lightSlot')} description={t('settings.theme.lightSlotDesc')}>
+              <SettingSelect
+                value={lightTheme}
+                onChange={setLightTheme}
+                options={slotOptions}
+                label={t('settings.theme.lightSlot')}
+              />
+            </SettingRow>
+            <SettingRow id="theme-dark-slot" label={t('settings.theme.darkSlot')} description={t('settings.theme.darkSlotDesc')}>
+              <SettingSelect
+                value={darkTheme}
+                onChange={setDarkTheme}
+                options={slotOptions}
+                label={t('settings.theme.darkSlot')}
+              />
+            </SettingRow>
+          </div>
+        )}
       </section>
 
       {/* Custom theme editor — shown when custom theme selected */}
@@ -5442,7 +5515,7 @@ function TabAbout() {
 
       <SettingsSection title={t('settings.links')}>
         <a
-          href="https://github.com/openwong2kim/wmux"
+          href="https://github.com/wisdomLei/wmux"
           target="_blank"
           rel="noopener noreferrer"
           className={`settings-row settings-kbd-row justify-start gap-2 text-[13px] text-[color:var(--accent-blue)] hover:underline ${FOCUS_RING}`}

@@ -128,8 +128,15 @@ jobs:
         # skips without WMUX_LAST_RELEASE_CLI, so here it must be set.
         if: needs.changes.outputs.relevant != 'false' && matrix.name == 'linux-x64'
         run: |
-          # The script picks the newest vX.Y.Z tag; the checkout has none.
-          git fetch --quiet --no-tags --depth=1 origin '+refs/tags/v*:refs/tags/v*'
+          # This fork publishes prerelease tags only, so it has no vX.Y.Z tag
+          # of its own — and fetching upstream's tags into it would arm this
+          # repo's tag-triggered release workflow. Ask the upstream repository
+          # for its newest stable tag instead and hand it to the script, which
+          # downloads that release's CLI from upstream.
+          tag="$(git ls-remote --tags --refs https://github.com/openwong2kim/wmux.git 'v*' \
+            | sed 's#.*refs/tags/##' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1)"
+          if [ -z "$tag" ]; then echo "no stable upstream release tag found"; exit 1; fi
+          export WMUX_LAST_RELEASE="${tag#v}"
           cli="$(node scripts/fetch-last-release-cli.mjs "$RUNNER_TEMP/last-release")"
           WMUX_LAST_RELEASE_CLI="$cli" npx vitest run src/cli/commands/__tests__/setupHooks.downgrade.os.test.ts
       - name: Retain the staged binary

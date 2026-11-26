@@ -1,0 +1,360 @@
+/* The browser client's responsive shell.
+ *
+ * The desktop browser keeps the app's own layout (sidebar, split panes,
+ * dialogs). Below the phone breakpoint the same components switch to the
+ * phone's shape: one pane, drawer navigation, a terminal key bar, and modal
+ * dialogs that rise from the bottom. No component forks: only their frame.
+ *
+ * Loaded by src/renderer/web/main.tsx, so none of it reaches the desktop
+ * renderer.
+ */
+
+/* ── terminal symbols ──────────────────────────────────────────────────── */
+
+/* Claude Code's TUI draws its chrome with symbols no terminal font in the
+ * fallback chain has (⏵ U+23F5 in "⏵⏵", ⏺, ⎿, ✳, ✻). Windows quietly borrows
+ * Segoe UI Symbol; Android has no such fallback and shows tofu. This subset is
+ * 3 KB and only covers those code points, so it is picked for nothing else.
+ * Added to the terminal fallback chain as 'wmux Symbols' (utils/terminalFont).
+ */
+@font-face {
+  font-family: 'wmux Symbols';
+  src: url('../assets/fonts/NotoSansSymbols2-Subset.woff2') format('woff2');
+  font-display: swap;
+  unicode-range: U+23BF, U+23F5, U+23FA, U+2733, U+273B;
+}
+
+/* ── viewport ──────────────────────────────────────────────────────────── */
+
+/* The app keeps the FULL screen height while the software keyboard is open:
+ * shrinking it would shrink the terminal's box, which would re-grid the PTY
+ * and refit the font — the terminal visibly collapses every time the user
+ * types. Instead the covered part is taken off the bottom and the column is
+ * shifted up by the same amount, so the key bar and the cursor row stay above
+ * the keyboard at the same font size (viewport.ts). */
+[data-web-app] {
+  height: 100vh;
+  height: var(--web-viewport-height, 100dvh);
+  width: 100%;
+  max-width: 100vw;
+  overscroll-behavior: none;
+  position: relative;
+  transform: translateY(calc(-1 * var(--web-keyboard-inset, 0px)));
+}
+
+[data-web-app] .wmux-shell-body {
+  min-height: 0;
+}
+
+/* ── phone terminal frame ──────────────────────────────────────────────── */
+
+[data-web-phone-terminal] {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+}
+
+.web-phone-terminal-scroll {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* A desk-owned pane keeps its grid, so the surface is wider than the phone and
+ * is panned sideways instead of being fitted to a 4px font. Vertical stays
+ * hidden: the fixed-geometry fit keeps all rows inside the height. */
+.web-phone-terminal-scroll[data-pan] {
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-x pan-y pinch-zoom;
+}
+
+.web-phone-terminal-surface {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.web-phone-desk-note {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 10;
+  padding: 3px 7px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--bg-surface);
+  color: var(--text-muted);
+  font-size: 10px;
+  line-height: 14px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* ── phone top bar ─────────────────────────────────────────────────────── */
+
+.web-mobile-bar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: calc(48px + env(safe-area-inset-top));
+  padding: env(safe-area-inset-top) max(8px, env(safe-area-inset-right)) 0 max(8px, env(safe-area-inset-left));
+  background: var(--bg-mantle);
+  box-shadow: inset 0 -1px 0 var(--stroke);
+  color: var(--text-main);
+  user-select: none;
+}
+
+.web-mobile-bar-menu {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 40px;
+  height: 40px;
+  border-radius: 7px;
+  color: var(--text-sub);
+}
+.web-mobile-bar-menu:hover { background: var(--hover-fill); color: var(--text-main); }
+.web-mobile-bar-menu:active { background: var(--selection); }
+
+.web-mobile-bar-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.web-mobile-bar-ws,
+.web-mobile-bar-pane {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.web-mobile-bar-ws { font-size: 13px; font-weight: 500; line-height: 17px; }
+.web-mobile-bar-pane { font-size: 11px; line-height: 14px; color: var(--text-sub); }
+
+.web-mobile-bar-state {
+  flex: 0 0 auto;
+  padding: 2px 6px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+/* ── sidebar drawer ───────────────────────────────────────────────────── */
+
+[data-web-drawer] {
+  /* Fixed to the viewport, below the phone's top bar. As an absolute child of
+     the padded shell it left a visible gap on every edge and stopped above the
+     key bar; a drawer owns the whole rest of the screen. */
+  position: fixed;
+  top: calc(48px + env(safe-area-inset-top));
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: var(--z-overlay);
+  display: flex;
+}
+
+.web-drawer-panel {
+  display: flex;
+  min-width: 0;
+  height: 100%;
+  width: min(88vw, 320px);
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+  background: var(--bg-mantle);
+  box-shadow: var(--shadow-popover);
+}
+.web-drawer-panel > .wmux-sidebar {
+  width: 100% !important;
+  height: 100%;
+}
+.web-drawer-panel .wmux-sidebar { border-right: 0; }
+
+.web-drawer-backdrop {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 0;
+  background: rgba(0, 0, 0, 0.45);
+}
+
+/* ── phone layout density ─────────────────────────────────────────────── */
+
+@media (max-width: 640px) {
+  [data-web-app] .wmux-shell-body {
+    gap: 0;
+    padding: 4px;
+  }
+  [data-web-app] .wmux-workspace-frame {
+    border-radius: 8px;
+  }
+  [data-web-pane-picker] {
+    padding: 3px 4px;
+  }
+  [data-web-pane-picker] button {
+    min-height: 34px;
+    padding-left: 10px;
+    padding-right: 10px;
+    font-size: 12px;
+  }
+  /* The new-terminal button floats over the pane tabs; at phone width it
+     sits just clear of them instead of covering the first tab. */
+  [data-web-new-terminal] {
+    top: 44px;
+  }
+}
+
+/* ── terminal key bar ─────────────────────────────────────────────────── */
+
+.web-keybar {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 4px max(6px, env(safe-area-inset-right)) calc(4px + env(safe-area-inset-bottom)) max(6px, env(safe-area-inset-left));
+  background: var(--bg-mantle);
+  box-shadow: inset 0 1px 0 var(--stroke);
+  user-select: none;
+  touch-action: manipulation;
+}
+
+.web-keybar-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.web-keybar-keys {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.web-keybar-keys::-webkit-scrollbar { display: none; }
+
+.web-keybar-tail {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 4px;
+}
+
+.web-keybar-key {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  height: 38px;
+  min-width: 38px;
+  padding: 0 9px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--bg-surface);
+  color: var(--text-main);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
+  touch-action: manipulation;
+}
+.web-keybar-key:hover { background: var(--selection); }
+.web-keybar-key:active { background: var(--selection-emphasis); --text-muted: var(--text-sub); }
+
+.web-keybar-toggle { color: var(--text-sub); }
+.web-keybar-chevron {
+  display: inline-flex;
+  transform: rotate(90deg);
+  transition: transform 120ms ease;
+}
+.web-keybar-chevron[data-expanded] { transform: rotate(-90deg); }
+.web-keybar-keyboard { width: 38px; padding: 0; color: var(--text-sub); }
+
+/* ── approvals ─────────────────────────────────────────────────────────── */
+
+/* Desktop web: a quiet floating card above whatever is at the bottom right.
+ * Phone: a bar in the column, directly above the key bar, so it never covers
+ * the keys or the terminal. */
+.web-approval-banner {
+  position: fixed;
+  right: 12px;
+  bottom: 12px;
+  z-index: var(--z-overlay);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: calc(100vw - 24px);
+  padding: 7px 9px 7px 11px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg-mantle);
+  box-shadow: var(--shadow-popover);
+  color: var(--accent-yellow);
+}
+
+.web-approval-banner-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--text-main);
+}
+
+.web-approval-banner[data-inline] {
+  position: static;
+  flex: 0 0 auto;
+  max-width: none;
+  padding: 5px 12px;
+  border: 0;
+  border-radius: 0;
+  box-shadow: inset 0 1px 0 var(--stroke);
+}
+
+/* ── dialogs rise from the bottom on a phone ──────────────────────────── */
+
+@media (max-width: 640px) {
+  [data-ui-dialog-root] {
+    align-items: flex-end;
+    padding-bottom: var(--web-keyboard-inset, 0px);
+  }
+
+  [data-ui-dialog-root] .ui-dialog {
+    width: 100% !important;
+    max-width: none;
+    max-height: calc(var(--web-viewport-height, 100dvh) - 12px);
+    border-radius: 16px 16px 0 0;
+    border-bottom: 0;
+  }
+
+  [data-ui-dialog-root] .ui-dialog-header {
+    padding: 16px 12px 0 16px;
+  }
+  [data-ui-dialog-root] .ui-dialog-body {
+    padding: 16px;
+    overscroll-behavior: contain;
+  }
+  [data-ui-dialog-root] .ui-dialog-footer {
+    padding: 8px 16px calc(12px + env(safe-area-inset-bottom));
+    flex-wrap: wrap;
+  }
+  [data-ui-dialog-root] .ui-dialog-footer > * {
+    min-height: 36px;
+  }
+
+  /* A popover near the edge must not push the page sideways. */
+  .ui-popover {
+    max-width: calc(100vw - 16px);
+  }
+}

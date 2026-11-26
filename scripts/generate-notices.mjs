@@ -300,6 +300,7 @@ const BUNDLED_FONTS = [
   { name: 'Figtree', file: 'LICENSE-Figtree.txt', repo: 'https://github.com/erikdkennedy/figtree' },
   { name: 'IBM Plex Sans', file: 'LICENSE-IBMPlexSans.txt', repo: 'https://github.com/IBM/plex' },
   { name: 'Pretendard (Hangul subset, renamed "wmux Hangul")', file: 'LICENSE-Pretendard.txt', repo: 'https://github.com/orioncactus/pretendard' },
+  { name: 'Noto Sans Symbols 2 (subset: U+23BF, U+23F5, U+23FA, U+2733, U+273B)', file: 'LICENSE-NotoSansSymbols2.txt', repo: 'https://github.com/notofonts/noto-fonts' },
 ];
 lines.push('BUNDLED FONTS');
 lines.push('');

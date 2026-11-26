@@ -154,6 +154,7 @@ import {
   type TokenRole,
 } from '../../themes';
 import { sanitizeFontFamily } from '../../utils/terminalFont';
+import { systemPrefersDark, systemSlotTheme, type ThemeMode } from '../../utils/followSystemTheme';
 import { DEFAULT_SLEEP_PREVENTION_MODE, type SleepPreventionMode } from '../../../shared/sleepPrevention';
 import {
   DEFAULT_TERMINAL_CURSOR_STYLE,
@@ -647,7 +648,20 @@ export interface UISlice {
 
   // ─── Theme ──────────────────────────────────────────────────────────────
   theme: string;
+  /** Applies a theme and leaves follow-system mode: picking a theme card means
+   *  "this theme", not "the theme that matches my system". */
   setTheme: (theme: string) => void;
+  /** How `theme` was chosen: 'fixed' keeps it; 'system' shows the light or
+   *  dark slot as the OS appearance changes. Persisted in the session. */
+  themeMode: ThemeMode;
+  setThemeMode: (mode: ThemeMode) => void;
+  /** The themes 'system' mode uses while the OS prefers light / dark. */
+  lightTheme: string;
+  darkTheme: string;
+  setLightTheme: (theme: string) => void;
+  setDarkTheme: (theme: string) => void;
+  /** Re-resolve the 'system' slots against the OS appearance; no-op in fixed mode. */
+  syncSystemTheme: () => void;
 
   // ─── Color inspect mode (PR2 foundation) ─────────────────────────────────
   // Top-level exclusive "point-and-style" mode. The InspectOverlay (separate
@@ -1925,6 +1939,48 @@ export const createUISlice: StateCreator<StoreState, [['zustand/immer', never]],
     }
     set((state) => {
       state.theme = theme;
+      // An explicit choice ends follow-system mode (see setTheme's comment).
+      state.themeMode = 'fixed';
+    });
+  },
+
+  themeMode: 'fixed',
+  // Paper is the light look and Tint the dark one, so the defaults match the
+  // app's own feel before the user picks a pair.
+  lightTheme: 'paper',
+  darkTheme: 'tint',
+
+  setThemeMode: (mode) => {
+    set((state) => {
+      state.themeMode = mode;
+    });
+    if (mode === 'system') get().syncSystemTheme();
+  },
+
+  setLightTheme: (theme) => {
+    set((state) => {
+      state.lightTheme = theme;
+    });
+    get().syncSystemTheme();
+  },
+
+  setDarkTheme: (theme) => {
+    set((state) => {
+      state.darkTheme = theme;
+    });
+    get().syncSystemTheme();
+  },
+
+  syncSystemTheme: () => {
+    const state = get();
+    const wanted = systemSlotTheme(state.themeMode, state.lightTheme, state.darkTheme, systemPrefersDark());
+    if (!wanted || wanted === state.theme) return;
+    // The same DOM work as setTheme, but this must NOT leave system mode.
+    document.documentElement.setAttribute('data-theme', wanted);
+    if (wanted === 'custom') applyCustomCssVars(state.customThemeColors ?? DEFAULT_CUSTOM_THEME);
+    else clearCustomCssVars();
+    set((s) => {
+      s.theme = wanted;
     });
   },
 

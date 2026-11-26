@@ -8,7 +8,7 @@ body:
       value: |
         Thanks for taking the time to file a bug. wmux is a native Windows
         terminal multiplexer — please include enough detail for us to reproduce
-        it on a clean machine. Search [existing issues](https://github.com/openwong2kim/wmux/issues?q=is%3Aissue)
+        it on a clean machine. Search [existing issues](https://github.com/wisdomLei/wmux/issues?q=is%3Aissue)
         first; if you find a match, add a 👍 or a comment instead of opening a new one.
 
   - type: textarea
