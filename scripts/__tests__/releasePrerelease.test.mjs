@@ -49,12 +49,15 @@ describe('release.yml prerelease tags', () => {
     expect(release).toContain(`make_latest: \${{ ${NOT_PRE} }}`);
   });
 
-  it('keeps a prerelease off Chocolatey and WinGet', () => {
+  // This fork has no Chocolatey or WinGet channel: those package ids belong to
+  // the upstream author, so the steps and the job are hard-off rather than
+  // merely prerelease-gated.
+  it('keeps this fork off Chocolatey and WinGet entirely', () => {
     for (const name of ['Build Chocolatey package', 'Push to Chocolatey']) {
       const gate = step(name).match(/^ {8}if: (.+)$/m);
-      expect(gate?.[1], `"${name}" has no prerelease gate`).toContain(NOT_PRE);
+      expect(gate?.[1], `"${name}" has no gate`).toBe('false');
     }
-    expect(jobHeader('winget')).toContain("if: needs.build.outputs.is_prerelease != 'true'");
+    expect(jobHeader('winget')).toContain('if: false');
   });
 
   it('has exactly one release-creating step, so no other path can publish as latest', () => {
